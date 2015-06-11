@@ -1,0 +1,23 @@
+ ** raw2dng: DNG converter library **
+
+Copyright (C) 2015 Fimagena (fimagena at gmail dot com)
+
+raw2dng is free software; you can redistribute it and/or modify
+it under the terms of the GNU Library General Public License as 
+published by the Free Software Foundation; either version 2 of 
+the License, or (at your option) any later version.
+
+raw2dng uses code from dngconvert (https://github.com/jmue/dngconvert), copyright
+2011 by Jens Mueller (tschensinger at gmx dot de)
+
+raw2dng uses code from dng_threaded_host.cpp -- Sandy McGuffog CornerFix utility
+(http://sourceforge.net/projects/cornerfix, sandy dot cornerfix at gmail dot com),
+dng_threaded_host.cpp is copyright 2007-2011, by Sandy McGuffog and Contributors.
+
+raw2dng uses code from dngwriter.cpp -- KDE Kipi-plugins dngconverter utility 
+(https://projects.kde.org/projects/extragear/graphics/kipi-plugins) utility,
+dngwriter.cpp is Copyright 2008-2010 by Gilles Caulier <caulier dot gilles at gmail dot com> 
+and Jens Mueller <tschenser at gmx dot de>
+
+
+
