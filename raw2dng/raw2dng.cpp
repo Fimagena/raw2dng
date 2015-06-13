@@ -35,12 +35,20 @@
 #include "dnghost.h"
 
 
+void publishProgressUpdate(const char *message) {
+#ifdef ANDROID
+    sendJNIProgressUpdate(message);
+#else
+    std::cout << " - " << message << "...\n";
+#endif
+}
+
+
 void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFilename, bool embedOriginal) {
     // -----------------------------------------------------------------------------------------
     // Init SDK and create processor
 
-    std::cout << "Starting DNG conversion:\n"
-              << " - Init program...\n";
+    std::cout << "Starting DNG conversion:\n";
 
     dng_xmp_sdk::InitializeSDK();
 
@@ -51,7 +59,7 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
 
     AutoPtr<dng_negative> negative(host->Make_dng_negative());
 
-    std::cout << " - Open and parse raw file...\n";
+    publishProgressUpdate("parsing raw file");
 
     AutoPtr<NegativeProcessor> negProcessor(NegativeProcessor::createProcessor(host, negative, rawFilename.c_str()));
 
@@ -66,7 +74,7 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
     // -----------------------------------------------------------------------------------------
     // Set all metadata and properties
 
-    std::cout << " - Read and process metadata...\n";
+    publishProgressUpdate("processing metadata");
 
     negProcessor->setDNGPropertiesFromRaw();
     negProcessor->setCameraProfile(dcpFilename.c_str());
@@ -79,31 +87,34 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
     // -----------------------------------------------------------------------------------------
     // Backup proprietary data and embed original raw (if requested)
 
-    std::cout << " - Backup proprietary data...\n";
+    publishProgressUpdate("backing up vendor data");
 
     negProcessor->backupProprietaryData();
     if (true == embedOriginal) {
-        std::cout << " - Embed original raw file...\n";
+        publishProgressUpdate("embedding raw file");
         negProcessor->embedOriginalRaw(rawFilename.c_str());
     }
 
     // -----------------------------------------------------------------------------------------
     // Copy raw image data and render image
 
-    std::cout << " - Read raw image data...\n";
+    publishProgressUpdate("reading raw image data");
 
     AutoPtr<dng_image> image(negProcessor->buildDNGImage());
 
-    std::cout << " - Linearise and demosaic...\n";
+    publishProgressUpdate("building preview - linearising");
 
     negative->SetStage1Image(image);     // Assign Raw image data.
     negative->BuildStage2Image(*host);   // Compute linearized and range mapped image
+
+    publishProgressUpdate("building preview - demosaicing");
+
     negative->BuildStage3Image(*host);   // Compute demosaiced image (used by preview and thumbnail)
 
     // -----------------------------------------------------------------------------------------
     // Render JPEG and thumbnail previews
- 
-    std::cout << " - Render JPEG preview...\n";
+
+    publishProgressUpdate("building preview - rendering JPEG");
 
     dng_jpeg_preview *jpeg_preview = new dng_jpeg_preview();
     jpeg_preview->fInfo.fApplicationName.Set_ASCII(appName.Get());
@@ -122,7 +133,7 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
 
     AutoPtr<dng_preview> jp(dynamic_cast<dng_preview*>(jpeg_preview));
 
-    std::cout << " - Render thumbnail...\n";
+    publishProgressUpdate("building preview - rendering thumbnail");
 
     dng_image_preview *thumbnail = new dng_image_preview();
     thumbnail->fInfo.fApplicationName    = jpeg_preview->fInfo.fApplicationName;
@@ -140,14 +151,14 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
     // -----------------------------------------------------------------------------------------
     // Write DNG-image to file
 
-    std::cout << " - Write DNG file...\n";
+    publishProgressUpdate("writing DNG file");
 
     dng_file_stream filestream(dngFilename.c_str(), true);
     writer.WriteDNG(*host, filestream, *negative.Get(), &previewList);
 
     // -----------------------------------------------------------------------------------------
 
-    std::cout << " - Clean up...\n";
+    publishProgressUpdate("cleaning up");
 
     dng_xmp_sdk::TerminateSDK();
 

@@ -26,33 +26,56 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
 
 #include <jni.h>
 #include <android/log.h>
-#define  LOG(...)  __android_log_print(ANDROID_LOG_ERROR, "image_writer", __VA_ARGS__)
+#define  LOG(MSG_STRING, ...)  __android_log_print(ANDROID_LOG_ERROR, MSG_STRING, __VA_ARGS__)
 
+JNIEnv *m_jEnvironment;
+jobject m_jCaller;
+jmethodID m_jMethodId = NULL;
 
 extern "C" {
-   JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_DngConverter_raw2dng(
-         JNIEnv *jEnv, jobject jObject, 
-         jstring jRawFilename, jstring jDngFilename, 
-         jstring jDcpFilename, jboolean jEmbedOriginal) {
-      const char *rawString = jEnv->GetStringUTFChars(jRawFilename, NULL);
-      const char *dngString = jEnv->GetStringUTFChars(jDngFilename, NULL);
-      const char *dcpString = jEnv->GetStringUTFChars(jDcpFilename, NULL);
+    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_DngConverter_registerListener(
+            JNIEnv *jEnv, jobject jObject, jstring jCallbackMethodName) {
+        m_jCaller = jEnv->NewGlobalRef(jObject);
 
-      std::string rawFilename(rawString);
-      std::string dngFilename(dngString);
-      std::string dcpFilename(dcpString);
+        const char *callbackMethodName = jEnv->GetStringUTFChars(jCallbackMethodName, NULL);
+        m_jMethodId = jEnv->GetMethodID(jEnv->GetObjectClass(m_jCaller), callbackMethodName, "(Ljava/lang/String;)V");
+        jEnv->ReleaseStringUTFChars(jCallbackMethodName, callbackMethodName);
 
-      jEnv->ReleaseStringUTFChars(jRawFilename, rawString);
-      jEnv->ReleaseStringUTFChars(jDngFilename, dngString);
-      jEnv->ReleaseStringUTFChars(jDcpFilename, dcpString);
+        if (m_jMethodId == NULL) jEnv->ThrowNew(jEnv->FindClass("java/lang/Exception"), "Could not find callback method signature!");
+    }
+    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_DngConverter_deRegisterListener(JNIEnv *jEnv, jobject jObject) {
+        m_jMethodId = NULL;
+        jEnv->DeleteGlobalRef(m_jCaller);
+    }
 
-      try {
-         raw2dng(rawFilename, dngFilename, dcpFilename, jEmbedOriginal);
-      }
-      catch (std::exception& e) {
-         jEnv->ThrowNew(jEnv->FindClass("java/lang/Exception"), e.what());
-      } 
-   }
+    void sendJNIProgressUpdate(const char *message) {
+        if (m_jMethodId == NULL) return;
+        jstring jMessage = m_jEnvironment->NewStringUTF(message);
+        m_jEnvironment->CallVoidMethod(m_jCaller, m_jMethodId, jMessage);
+    }
+
+    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_DngConverter_raw2dng(JNIEnv *jEnv, jobject jObject,
+            jstring jRawFilename, jstring jDngFilename, jstring jDcpFilename, jboolean jEmbedOriginal) {
+        m_jEnvironment = jEnv;
+
+        const char *rawString = jEnv->GetStringUTFChars(jRawFilename, NULL);
+        const char *dngString = jEnv->GetStringUTFChars(jDngFilename, NULL);
+        const char *dcpString = jEnv->GetStringUTFChars(jDcpFilename, NULL);
+
+        std::string rawFilename(rawString);
+        std::string dngFilename(dngString);
+        std::string dcpFilename(dcpString);
+
+        jEnv->ReleaseStringUTFChars(jRawFilename, rawString);
+        jEnv->ReleaseStringUTFChars(jDngFilename, dngString);
+        jEnv->ReleaseStringUTFChars(jDcpFilename, dcpString);
+
+        try {
+            raw2dng(rawFilename, dngFilename, dcpFilename, jEmbedOriginal);
+        }
+        catch (std::exception& e) {
+            jEnv->ThrowNew(jEnv->FindClass("java/lang/Exception"), e.what());
+        }
+    }
 }
- 
 #endif
