@@ -81,7 +81,6 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
     negProcessor->setExifFromRaw(dateTimeNow, appNameVersion);
     negProcessor->setXmpFromRaw(dateTimeNow, appNameVersion);
 
-    // m_negative->SynchronizeMetadata(); // This would write all Exif into XMP - no real reason to do so?
     negative->RebuildIPTC(true);
 
     // -----------------------------------------------------------------------------------------
