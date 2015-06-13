@@ -610,7 +610,7 @@ void NegativeProcessor::embedOriginalRaw(const char *rawFilename) {
         zstrm.next_in = inBuffer;
         zstrm.avail_out = BLOCKSIZE * 2;
         zstrm.next_out = outBuffer;
-        if (deflate(&zstrm, Z_FINISH))
+        if (deflate(&zstrm, Z_FINISH) != Z_STREAM_END)
             throw std::runtime_error("Error compressing chunk for embedding raw file!");
 
         uint32 compressedBlockLength = zstrm.total_out;
