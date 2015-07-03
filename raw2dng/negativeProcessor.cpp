@@ -1,4 +1,6 @@
-/* This library is free software; you can redistribute it and/or
+/* Copyright (C) 2015 Fimagena
+
+   This library is free software; you can redistribute it and/or
    modify it under the terms of the GNU Library General Public
    License as published by the Free Software Foundation; either
    version 2 of the License, or (at your option) any later version.
@@ -19,8 +21,9 @@
 */
 
 #include "negativeProcessor.h"
-#include "ILCE7Processor.h"
-#include "variousVendorProcessor.h"
+#include "vendorProcessors/ILCE7Processor.h"
+#include "vendorProcessors/FujiProcessor.h"
+#include "vendorProcessors/variousVendorProcessor.h"
 
 #include <stdexcept>
 
@@ -41,8 +44,6 @@ NegativeProcessor* NegativeProcessor::createProcessor(AutoPtr<dng_host> &host, A
     // Open and parse rawfile with libraw...
 
     AutoPtr<LibRaw> rawProcessor(new LibRaw());
-    rawProcessor->imgdata.params.output_bps = 16;  // FORK/CHECK/TEST: why not 8 (default)?
-    rawProcessor->imgdata.params.shot_select = 0;
 
     int ret = rawProcessor->open_file(filename);
     if (ret != LIBRAW_SUCCESS) {
@@ -76,6 +77,8 @@ NegativeProcessor* NegativeProcessor::createProcessor(AutoPtr<dng_host> &host, A
 
     if (!strcmp(rawProcessor->imgdata.idata.model, "ILCE-7"))
         return new ILCE7processor(host, negative, rawProcessor.Release(), rawImage);
+    else if (!strcmp(rawProcessor->imgdata.idata.make, "FUJIFILM"))
+        return new FujiProcessor(host, negative, rawProcessor.Release(), rawImage);
 
     return new VariousVendorProcessor(host, negative, rawProcessor.Release(), rawImage);
 }
@@ -83,10 +86,9 @@ NegativeProcessor* NegativeProcessor::createProcessor(AutoPtr<dng_host> &host, A
 
 NegativeProcessor::NegativeProcessor(AutoPtr<dng_host> &host, AutoPtr<dng_negative> &negative, 
                                      LibRaw *rawProcessor, Exiv2::Image::AutoPtr &rawImage)
-                                    : m_isFuji(false), m_fujiRotate90(false),
-                                      m_RawProcessor(rawProcessor), m_RawImage(rawImage),
-                                      m_RawExif(m_RawImage->exifData()), m_RawXmp(m_RawImage->xmpData()),
-                                      m_host(host), m_negative(negative) {}
+                                   : m_RawProcessor(rawProcessor), m_RawImage(rawImage),
+                                     m_RawExif(m_RawImage->exifData()), m_RawXmp(m_RawImage->xmpData()),
+                                     m_host(host), m_negative(negative) {}
 
 
 NegativeProcessor::~NegativeProcessor() {
@@ -97,12 +99,6 @@ NegativeProcessor::~NegativeProcessor() {
 void NegativeProcessor::setDNGPropertiesFromRaw() {
     libraw_image_sizes_t *sizes   = &m_RawProcessor->imgdata.sizes;
     libraw_iparams_t     *iparams = &m_RawProcessor->imgdata.idata;
-
-	// -----------------------------------------------------------------------------------------
-	// Do we have to deal with Fuji oddities?
-
-    m_isFuji = (0 == memcmp("FUJIFILM", iparams->make, std::min((size_t)8, sizeof(iparams->make))));
-    m_fujiRotate90 = (m_isFuji && (2 == m_RawProcessor->COLOR(0, 1)) && (1 == m_RawProcessor->COLOR(1, 0)));
 
     // -----------------------------------------------------------------------------------------
     // Raw filename
@@ -127,7 +123,6 @@ void NegativeProcessor::setDNGPropertiesFromRaw() {
         case 6:  baseOrientation = dng_orientation::Rotate90CW(); break;
         default: baseOrientation = dng_orientation::Normal(); break;
     }
-    if (m_fujiRotate90) baseOrientation += dng_orientation::Mirror90CCW();
 
     m_negative->SetBaseOrientation(baseOrientation);
 
@@ -153,22 +148,19 @@ void NegativeProcessor::setDNGPropertiesFromRaw() {
     // Mosaic
 
     if (iparams->colors == 4) m_negative->SetQuadMosaic(iparams->filters);
-    else if (m_isFuji)        m_negative->SetFujiMosaic(0);
     else switch(iparams->filters) {
             case 0xe1e1e1e1:  m_negative->SetBayerMosaic(0); break;
             case 0xb4b4b4b4:  m_negative->SetBayerMosaic(1); break;
             case 0x1e1e1e1e:  m_negative->SetBayerMosaic(2); break;
             case 0x4b4b4b4b:  m_negative->SetBayerMosaic(3); break;
-            default: break;// should probably throw some kind of error here...
+            default: break;  // not throwing error, because this might be set in a sub-class (e.g., Fuji)
         }
 
 	// -----------------------------------------------------------------------------------------
 	// Default scale and crop/active area
 
-    uint32 outputWidth  = m_fujiRotate90 ? sizes->iheight : sizes->iwidth;
-    uint32 outputHeight = m_fujiRotate90 ? sizes->iwidth  : sizes->iheight;
-    uint32 visibleWidth  = m_fujiRotate90 ? sizes->height : sizes->width;
-    uint32 visibleHeight = m_fujiRotate90 ? sizes->width  : sizes->height;
+    uint32 outputWidth  = sizes->iwidth; uint32 outputHeight  = sizes->iheight;
+    uint32 visibleWidth = sizes->width;  uint32 visibleHeight = sizes->height;
 
     m_negative->SetDefaultScale(dng_urational(outputWidth, visibleWidth), 
     							dng_urational(outputHeight, visibleHeight));
@@ -427,7 +419,8 @@ void NegativeProcessor::setExifFromRaw(const dng_date_time_info &dateTimeNow, co
      - fApproxFocusDistance
      - fFlashCompensation, fFlashMask
      - fFirmware 
-     - fLensID, fLensNameWasReadFromExif
+     - fLensID
+     - fLensNameWasReadFromExif (--> available but not used by SDK)
      - fRelatedImageFileFormat, fRelatedImageWidth, fRelatedImageLength */
 
     // -----------------------------------------------------------------------------------------
@@ -440,6 +433,22 @@ void NegativeProcessor::setExifFromRaw(const dng_date_time_info &dateTimeNow, co
         for (uint16 c = 0; c < negExif->fCFARepeatPatternCols; c++)
             for (uint16 r = 0; r < negExif->fCFARepeatPatternRows; r++)
                 negExif->fCFAPattern[r][c] = mosaicinfo->fCFAPattern[c][r];
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Reconstruct LensName from LensInfo if not present
+
+    if (negExif->fLensName.IsEmpty()) {
+        dng_urational *li = negExif->fLensInfo;
+        std::stringstream lensName; lensName.precision(1); lensName.setf(std::ios::fixed, std::ios::floatfield);
+
+        if (li[0].IsValid())      lensName << li[0].As_real64();
+        if (li[1] != li[2])       lensName << "-" << li[1].As_real64();
+        if (lensName.tellp() > 0) lensName << " mm";
+        if (li[2].IsValid())      lensName << " f/" << li[2].As_real64();
+        if (li[3] != li[2])       lensName << "-" << li[3].As_real64();
+
+        negExif->fLensName.Set_ASCII(lensName.str().c_str());
     }
 
     // -----------------------------------------------------------------------------------------
@@ -527,7 +536,6 @@ dng_image* NegativeProcessor::buildDNGImage() {
     uint32 rawWidth  = std::max(static_cast<uint32>(sizes->raw_width),  static_cast<uint32>(sizes->width  + sizes->left_margin));
     uint32 rawHeight = std::max(static_cast<uint32>(sizes->raw_height), static_cast<uint32>(sizes->height + sizes->top_margin ));
     dng_rect bounds = dng_rect(rawHeight, rawWidth);
-    if (m_fujiRotate90) bounds = dng_rect(rawWidth, rawHeight);
 
     int planes = (m_RawProcessor->imgdata.idata.filters == 0) ? 3 : 1;
 
@@ -539,23 +547,13 @@ dng_image* NegativeProcessor::buildDNGImage() {
     // -----------------------------------------------------------------------------------------
     // Select right data source and copy sensor data from raw-file to DNG-image
 
-    unsigned short *rawBuffer = m_RawProcessor->imgdata.rawdata.raw_image;
-    if (rawBuffer == NULL) rawBuffer = (unsigned short*) m_RawProcessor->imgdata.rawdata.color3_image;
-    if (rawBuffer == NULL) rawBuffer = (unsigned short*) m_RawProcessor->imgdata.rawdata.color4_image;
-
-    // we're trusting libraw here to have all data correct and consistent...
-    if (rawBuffer == m_RawProcessor->imgdata.rawdata.raw_image) {
-        if (!m_fujiRotate90) 
-            memcpy(imageBuffer, rawBuffer, sizes->raw_height * sizes->raw_width * sizeof(unsigned short));
-        else 
-            for (unsigned int col = 0; col < sizes->raw_width; col++)
-                for (unsigned int row = 0; row < sizes->raw_height; row++) {
-                    *imageBuffer = rawBuffer[row * sizes->raw_width + col];
-                    ++imageBuffer;
-                }
-    }
+    if (m_RawProcessor->imgdata.rawdata.raw_image != NULL)
+        memcpy(imageBuffer, m_RawProcessor->imgdata.rawdata.raw_image, sizes->raw_height * sizes->raw_width * sizeof(unsigned short));
     else {
+        unsigned short *rawBuffer = (unsigned short*) m_RawProcessor->imgdata.rawdata.color3_image;
+        if (rawBuffer == NULL) rawBuffer = (unsigned short*) m_RawProcessor->imgdata.rawdata.color4_image;
         const unsigned int colors = m_RawProcessor->imgdata.idata.colors;
+
         for (unsigned int row = 0; row < sizes->raw_height; row++)
             for (unsigned int col = 0; col < sizes->raw_width; col++)
                 for (uint32 color = 0; color < colors; color++) {
@@ -651,7 +649,6 @@ void NegativeProcessor::embedOriginalRaw(const char *rawFilename) {
 
 // -----------------------------------------------------------------------------------------
 // Protected helper functions
-
 
 bool NegativeProcessor::getRawExifTag(const char* exifTagName, dng_string* value) {
     Exiv2::ExifData::const_iterator it = m_RawExif.findKey(Exiv2::ExifKey(exifTagName));

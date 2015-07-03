@@ -1,4 +1,6 @@
-/* This library is free software; you can redistribute it and/or
+/* Copyright (C) 2015 Fimagena
+
+   This library is free software; you can redistribute it and/or
    modify it under the terms of the GNU Library General Public
    License as published by the Free Software Foundation; either
    version 2 of the License, or (at your option) any later version.
@@ -159,21 +161,5 @@ void VariousVendorProcessor::setExifFromRaw(const dng_date_time_info &dateTimeNo
     // Sony Makernotes
 
     if (getRawExifTag("Exif.Sony2.LensID", 0, &tmp_uint32)) setString(tmp_uint32, &negExif->fLensID);
-
-    // -----------------------------------------------------------------------------------------
-    // Reconstruct LensName from LensInfo if not present
-
-    if (negExif->fLensName.IsEmpty()) {
-        dng_urational *li = negExif->fLensInfo;
-        std::stringstream lensName; lensName.precision(1); lensName.setf(std::ios::fixed, std::ios::floatfield);
-
-        if (li[0].IsValid())      lensName << li[0].As_real64();
-        if (li[1] != li[2])       lensName << "-" << li[1].As_real64();
-        if (lensName.tellp() > 0) lensName << " mm";
-        if (li[2].IsValid())      lensName << " f/" << li[2].As_real64();
-        if (li[3] != li[2])       lensName << "-" << li[3].As_real64();
-
-        negExif->fLensName.Set_ASCII(lensName.str().c_str());
-    }
 }
 

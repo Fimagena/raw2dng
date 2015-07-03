@@ -1,4 +1,6 @@
-/* This library is free software; you can redistribute it and/or
+/* Copyright (C) 2015 Fimagena
+
+   This library is free software; you can redistribute it and/or
    modify it under the terms of the GNU Library General Public   
    License as published by the Free Software Foundation; either
    version 2 of the License, or (at your option) any later version.
@@ -31,7 +33,6 @@
 #include "dng_color_space.h"
 
 #include "negativeProcessor.h"
-#include "ILCE7processor.h"
 #include "dnghost.h"
 
 
@@ -170,7 +171,7 @@ int main(int argc, const char* argv []) {
         fprintf(stderr,
                 "\n"
                 "raw2dng - DNG converter\n"
-                "Usage: %s [options] <dngfile>\n"
+                "Usage: %s [options] <rawfile>\n"
                 "Valid options:\n"
                 "  -dcp <filename>      use adobe camera profile\n"
                 "  -e                   embed original\n"

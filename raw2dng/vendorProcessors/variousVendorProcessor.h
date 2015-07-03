@@ -1,4 +1,6 @@
-/* This library is free software; you can redistribute it and/or
+/* Copyright (C) 2015 Fimagena
+
+   This library is free software; you can redistribute it and/or
    modify it under the terms of the GNU Library General Public
    License as published by the Free Software Foundation; either
    version 2 of the License, or (at your option) any later version.
@@ -19,17 +21,13 @@
 #include "negativeProcessor.h"
 
 
-class ILCE7processor : public NegativeProcessor {
+class VariousVendorProcessor : public NegativeProcessor {
 friend class NegativeProcessor;
 
 public:
-   void setDNGPropertiesFromRaw();
    void setExifFromRaw(const dng_date_time_info &dateTimeNow, const dng_string &appNameVersion);
-   void setXmpFromRaw(const dng_date_time_info &dateTimeNow, const dng_string &appNameVersion);
 
 protected:
-   ILCE7processor(AutoPtr<dng_host> &host, AutoPtr<dng_negative> &negative, 
-                  LibRaw *rawProcessor, Exiv2::Image::AutoPtr &rawImage);
-
-   dng_memory_stream* createDNGPrivateTag();
+   VariousVendorProcessor(AutoPtr<dng_host> &host, AutoPtr<dng_negative> &negative, 
+                          LibRaw *rawProcessor, Exiv2::Image::AutoPtr &rawImage);
 };
