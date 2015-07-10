@@ -23,6 +23,7 @@
 #include <dng_rational.h>
 #include <dng_string.h>
 
+#include <libraw/libraw.h>
 #include <exiv2/exif.hpp>
 
 #include "variousVendorProcessor.h"
@@ -93,13 +94,19 @@ void VariousVendorProcessor::setExifFromRaw(const dng_date_time_info &dateTimeNo
     getRawExifTag("Exif.NikonLd2.LensIDNumber", &negExif->fLensName);
     getRawExifTag("Exif.NikonLd3.LensIDNumber", &negExif->fLensName);
     getRawExifTag("Exif.Nikon3.ShutterCount", 0, &negExif->fImageNumber);
-    if (getRawExifTag("Exif.Nikon3.ISOSpeed", 1, &tmp_urat)) negExif->fISOSpeedRatings[0] = tmp_urat.n;
     if (getRawExifTag("Exif.Nikon3.SerialNO", &negExif->fCameraSerialNumber)) {
         negExif->fCameraSerialNumber.Replace("NO=", "", false);
         negExif->fCameraSerialNumber.TrimLeadingBlanks();
         negExif->fCameraSerialNumber.TrimTrailingBlanks();
     }
     getRawExifTag("Exif.Nikon3.SerialNumber", &negExif->fCameraSerialNumber);
+
+    // checked
+    if (negExif->fISOSpeedRatings[0] == 0) {
+        if (getRawExifTag("Exif.Nikon1.ISOSpeed", 1, &tmp_uint32)) negExif->fISOSpeedRatings[0] = tmp_uint32;
+        if (getRawExifTag("Exif.Nikon2.ISOSpeed", 1, &tmp_uint32)) negExif->fISOSpeedRatings[0] = tmp_uint32;
+        if (getRawExifTag("Exif.Nikon3.ISOSpeed", 1, &tmp_uint32)) negExif->fISOSpeedRatings[0] = tmp_uint32;
+    }
 
     // -----------------------------------------------------------------------------------------
     // Canon Makernotes
@@ -150,14 +157,12 @@ void VariousVendorProcessor::setExifFromRaw(const dng_date_time_info &dateTimeNo
         negExif->fFirmware.TrimTrailingBlanks();
     }
 
-    dng_string str;
-    if (getRawExifTag("Exif.CanonSi.ISOSpeed", &str)) {
-        sscanf(str.Get(), "%i", &tmp_uint32);
-        negExif->fISOSpeedRatings[0] = tmp_uint32;
-    }
-
     getRawExifTag("Exif.Canon.FileNumber", 0, &negExif->fImageNumber);
     getRawExifTag("Exif.CanonFi.FileNumber", 0, &negExif->fImageNumber);
+
+    // checked
+    if ((negExif->fISOSpeedRatings[0] == 0) && getRawExifTag("Exif.CanonSi.ISOSpeed", 0, &tmp_uint32)) 
+        negExif->fISOSpeedRatings[0] = tmp_uint32;
 
     // -----------------------------------------------------------------------------------------
     // Pentax Makernotes
@@ -190,6 +195,11 @@ void VariousVendorProcessor::setExifFromRaw(const dng_date_time_info &dateTimeNo
 
     getRawExifTag("Exif.Panasonic.LensType", &negExif->fLensName);
     getRawExifTag("Exif.Panasonic.LensSerialNumber", &negExif->fLensSerialNumber);
+
+    // checked
+    if (negExif->fISOSpeedRatings[0] == 0) 
+        if (getRawExifTag("Exif.Panasonic.ProgramISO", 0, &tmp_uint32) && (tmp_uint32 != 65535))
+            negExif->fISOSpeedRatings[0] = tmp_uint32;
 
     // -----------------------------------------------------------------------------------------
     // Sony Makernotes
