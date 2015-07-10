@@ -202,6 +202,15 @@ void VariousVendorProcessor::setExifFromRaw(const dng_date_time_info &dateTimeNo
             negExif->fISOSpeedRatings[0] = tmp_uint32;
 
     // -----------------------------------------------------------------------------------------
+    // Samsung Makernotes
+
+    // checked
+    getRawExifTag("Exif.Samsung2.FirmwareName", &negExif->fFirmware);
+    getRawExifTag("Exif.Samsung2.LensType", &negExif->fLensID);
+    if ((negExif->fFocalLengthIn35mmFilm == 0) && getRawExifTag("Exif.Samsung2.FocalLengthIn35mmFormat", 0, &tmp_uint32))
+        negExif->fFocalLengthIn35mmFilm = tmp_uint32 / 10;
+
+    // -----------------------------------------------------------------------------------------
     // Sony Makernotes
 
     if (getRawExifTag("Exif.Sony2.LensID", 0, &tmp_uint32)) setString(tmp_uint32, &negExif->fLensID);
