@@ -40,6 +40,23 @@ void setString(uint32 inInt, dng_string *outString) {
 }
 
 
+void VariousVendorProcessor::setDNGPropertiesFromRaw() {
+    NegativeProcessor::setDNGPropertiesFromRaw();
+
+    // -----------------------------------------------------------------------------------------
+    // Sony default crop origin/size
+
+    uint32 imageSizeHV[2];
+    if (getRawExifTag("Exif.Sony2.FullImageSize", imageSizeHV, 2) == 2) {
+        int frameH = (imageSizeHV[1] > m_RawProcessor->imgdata.sizes.width ) ? 0 : m_RawProcessor->imgdata.sizes.width  - imageSizeHV[1];
+        int frameV = (imageSizeHV[0] > m_RawProcessor->imgdata.sizes.height) ? 0 : m_RawProcessor->imgdata.sizes.height - imageSizeHV[0];
+
+        m_negative->SetDefaultCropOrigin(frameH / 2, frameV / 2);
+        m_negative->SetDefaultCropSize(imageSizeHV[0], imageSizeHV[1]);
+    }
+}
+
+
 void VariousVendorProcessor::setExifFromRaw(const dng_date_time_info &dateTimeNow, const dng_string &appNameVersion) {
     NegativeProcessor::setExifFromRaw(dateTimeNow, appNameVersion);
 
