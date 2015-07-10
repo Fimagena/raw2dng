@@ -52,27 +52,18 @@ void FujiProcessor::setDNGPropertiesFromRaw() {
     // Default scale and crop/active area
 
     if (m_fujiRotate90) {
-        uint32 outputWidth  = sizes->iheight;
-        uint32 outputHeight = sizes->iwidth;
-        uint32 visibleWidth  = sizes->height;
-        uint32 visibleHeight = sizes->width;
-
-        m_negative->SetDefaultScale(dng_urational(outputWidth, visibleWidth), 
-                                    dng_urational(outputHeight, visibleHeight));
+        m_negative->SetDefaultScale(dng_urational(sizes->iheight, sizes->height), dng_urational(sizes->iwidth, sizes->width));
+        m_negative->SetActiveArea(dng_rect(sizes->top_margin, sizes->left_margin,
+                                           sizes->top_margin + sizes->width, sizes->left_margin + sizes->height));
 
         if (iparams->filters != 0) {
-            m_negative->SetDefaultCropOrigin(dng_urational(8, 1), dng_urational(8, 1));
-            m_negative->SetDefaultCropSize(dng_urational(visibleWidth - 16, 1), dng_urational(visibleHeight - 16, 1));
+            m_negative->SetDefaultCropOrigin(8, 8);
+            m_negative->SetDefaultCropSize(sizes->height - 16, sizes->width - 16);
         }
         else {
-            m_negative->SetDefaultCropOrigin(dng_urational(0, 1), dng_urational(0, 1));
-            m_negative->SetDefaultCropSize(dng_urational(visibleWidth, 1), dng_urational(visibleHeight, 1));
+            m_negative->SetDefaultCropOrigin(0, 0);
+            m_negative->SetDefaultCropSize(sizes->height, sizes->width);
         }
-
-        m_negative->SetActiveArea(dng_rect(sizes->top_margin,
-                                           sizes->left_margin,
-                                           sizes->top_margin + visibleHeight,
-                                           sizes->left_margin + visibleWidth));
     }
 }
 

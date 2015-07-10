@@ -168,22 +168,22 @@ ILCE7processor::ILCE7processor(AutoPtr<dng_host> &host, AutoPtr<dng_negative> &n
 void ILCE7processor::setDNGPropertiesFromRaw() {
     NegativeProcessor::setDNGPropertiesFromRaw();
 
-    m_negative->SetDefaultCropOrigin(dng_urational(12, 1), dng_urational(12, 1));
-    m_negative->SetDefaultCropSize(dng_urational(m_RawProcessor->imgdata.sizes.width - 24, 1), 
-                                   dng_urational(m_RawProcessor->imgdata.sizes.height - 24, 1));
-    m_negative->SetActiveArea(dng_rect(0, 0, m_RawProcessor->imgdata.sizes.raw_height, 
-                                             m_RawProcessor->imgdata.sizes.raw_width));
-
     m_negative->SetWhiteLevel(16300, 0);
     m_negative->SetWhiteLevel(16300, 1);
     m_negative->SetWhiteLevel(16300, 2);
     m_negative->SetWhiteLevel(16300, 3);
 
-    dng_string makeModel;
-    makeModel.Append(m_RawProcessor->imgdata.idata.make);
-    makeModel.Append(" ");
-    makeModel.Append(m_RawProcessor->imgdata.idata.model);
-    m_negative->SetModelName(makeModel.Get());
+    // -----------------------------------------------------------------------------------------
+    // Adjust default crop
+
+    uint32 imageSizeHV[2];
+    if (getRawExifTag("Exif.Sony2.FullImageSize", imageSizeHV, 2) == 2) {
+        int frameH = (imageSizeHV[1] > m_RawProcessor->imgdata.sizes.width ) ? 0 : m_RawProcessor->imgdata.sizes.width  - imageSizeHV[1];
+        int frameV = (imageSizeHV[0] > m_RawProcessor->imgdata.sizes.height) ? 0 : m_RawProcessor->imgdata.sizes.height - imageSizeHV[0];
+
+        m_negative->SetDefaultCropOrigin(frameH / 2, frameV / 2);
+        m_negative->SetDefaultCropSize(imageSizeHV[0], imageSizeHV[1]);
+    }
 
     // -----------------------------------------------------------------------------------------
     // Read Sony's embedded CA-correction data and write WarpRectilinear opcodes
