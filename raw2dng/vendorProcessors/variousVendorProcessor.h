@@ -18,13 +18,14 @@
 
 #pragma once
 
-#include "negativeProcessor.h"
+#include "../negativeProcessor.h"
 
 
 class VariousVendorProcessor : public NegativeProcessor {
 friend class NegativeProcessor;
 
 public:
+   void setDNGPropertiesFromRaw();
    void setExifFromRaw(const dng_date_time_info &dateTimeNow, const dng_string &appNameVersion);
 
 protected:

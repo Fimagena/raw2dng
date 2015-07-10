@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "negativeProcessor.h"
+#include "../negativeProcessor.h"
 
 
 // TODO/FIXME: Fuji support is currently broken!

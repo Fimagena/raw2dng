@@ -10,8 +10,8 @@ SET(RAW2DNG_VERSION_PATCH 0)
 # configure a header file to pass some of the CMake settings
 # to the source code
 CONFIGURE_FILE (
-  "${CURRENT_SOURCE_DIR}/config.h.cmake"
-  "${CURRENT_BINARY_DIR}/config.h"
+  "${CMAKE_CURRENT_SOURCE_DIR}/config.h.cmake"
+  "${CMAKE_CURRENT_BINARY_DIR}/config.h"
   )
 
 SET( EXIV2_MIN_VERSION "0.21" )
@@ -64,8 +64,9 @@ ENDIF(NOT WIN32)
 SET( RAW2DNG_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/raw2dng.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/negativeProcessor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/ILCE7processor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/variousVendorProcessor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendorProcessors/ILCE7processor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendorProcessors/FujiProcessor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendorProcessors/variousVendorProcessor.cpp
    )
 
 # Level of debug info in the console.
@@ -74,12 +75,10 @@ ADD_DEFINITIONS(-DqDNGValidateTarget=1)
 
 ADD_EXECUTABLE( raw2dng ${RAW2DNG_SRCS} )
 
-TARGET_LINK_LIBRARIES(raw2dng ${EXIV2_LIBRARIES}
-                                 ${LIBRAW_LIBRARIES}
-                                 ${ZLIB_LIBRARIES}
-                                 xmp-sdk
-                                 dng-sdk
-                                 dng)
+TARGET_LINK_LIBRARIES(raw2dng dng
+                              ${ZLIB_LIBRARIES}
+                              ${LIBRAW_LIBRARIES}
+                              ${EXIV2_LIBRARIES})
 
 # add the install targets
 INSTALL(TARGETS raw2dng DESTINATION bin)
