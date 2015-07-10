@@ -35,6 +35,7 @@
 
 #include <zlib.h>
 
+#include <exiv2/image.hpp>
 #include <libraw/libraw.h>
 
 
@@ -96,6 +97,21 @@ NegativeProcessor::~NegativeProcessor() {
 }
 
 
+ColorKeyCode colorKey(const char color) {
+    switch (color) {
+        case 'R': return colorKeyRed;
+        case 'G': return colorKeyGreen;
+        case 'B': return colorKeyBlue;
+        case 'C': return colorKeyCyan;
+        case 'M': return colorKeyMagenta;
+        case 'Y': return colorKeyYellow;
+        case 'E': return colorKeyCyan; // only in the Sony DSC-F828. 'Emerald' - like cyan according to Sony
+        case 'T':                      // what is 'T'??? LibRaw reports that only for the Leaf Catchlight, so I guess we're not compatible with early '90s tech...
+        default:  return colorKeyMaxEnum;
+    }
+}
+
+
 void NegativeProcessor::setDNGPropertiesFromRaw() {
     libraw_image_sizes_t *sizes   = &m_RawProcessor->imgdata.sizes;
     libraw_iparams_t     *iparams = &m_RawProcessor->imgdata.idata;
@@ -111,38 +127,31 @@ void NegativeProcessor::setDNGPropertiesFromRaw() {
 	// -----------------------------------------------------------------------------------------
 	// Model
 
-    m_negative->SetModelName(iparams->model);
+    dng_string makeModel;
+    makeModel.Append(iparams->make);
+    makeModel.Append(" ");
+    makeModel.Append(iparams->model);
+    m_negative->SetModelName(makeModel.Get());
 
     // -----------------------------------------------------------------------------------------
     // Orientation 
 
-    dng_orientation baseOrientation;
     switch (sizes->flip) {
-        case 3:  baseOrientation = dng_orientation::Rotate180(); break;
-        case 5:  baseOrientation = dng_orientation::Rotate90CCW(); break;
-        case 6:  baseOrientation = dng_orientation::Rotate90CW(); break;
-        default: baseOrientation = dng_orientation::Normal(); break;
+        case 180:
+        case 3:  m_negative->SetBaseOrientation(dng_orientation::Rotate180()); break;
+        case 270:
+        case 5:  m_negative->SetBaseOrientation(dng_orientation::Rotate90CCW()); break;
+        case 90:
+        case 6:  m_negative->SetBaseOrientation(dng_orientation::Rotate90CW()); break;
+        default: m_negative->SetBaseOrientation(dng_orientation::Normal()); break;
     }
-
-    m_negative->SetBaseOrientation(baseOrientation);
 
 	// -----------------------------------------------------------------------------------------
 	// ColorKeys (this needs to happen before Mosaic - how about documenting that in the SDK???)
 
     m_negative->SetColorChannels(iparams->colors);
-	ColorKeyCode CFAPlaneColor[4];
-    for (int i = 0; i < 4; i++) {
-        switch (iparams->cdesc[i]) {
-            case 'R': CFAPlaneColor[i] = colorKeyRed;     break;
-            case 'G': CFAPlaneColor[i] = colorKeyGreen;   break;
-            case 'B': CFAPlaneColor[i] = colorKeyBlue;    break;
-            case 'C': CFAPlaneColor[i] = colorKeyCyan;    break;
-            case 'M': CFAPlaneColor[i] = colorKeyMagenta; break;
-            case 'Y': CFAPlaneColor[i] = colorKeyYellow;  break;
-            default:  CFAPlaneColor[i] = colorKeyMaxEnum;
-        }
-    }
-    m_negative->SetColorKeys(CFAPlaneColor[0], CFAPlaneColor[1], CFAPlaneColor[2], CFAPlaneColor[3]);
+    m_negative->SetColorKeys(colorKey(iparams->cdesc[0]), colorKey(iparams->cdesc[1]), 
+                             colorKey(iparams->cdesc[2]), colorKey(iparams->cdesc[3]));
 
     // -----------------------------------------------------------------------------------------
     // Mosaic
@@ -159,25 +168,13 @@ void NegativeProcessor::setDNGPropertiesFromRaw() {
 	// -----------------------------------------------------------------------------------------
 	// Default scale and crop/active area
 
-    uint32 outputWidth  = sizes->iwidth; uint32 outputHeight  = sizes->iheight;
-    uint32 visibleWidth = sizes->width;  uint32 visibleHeight = sizes->height;
+    m_negative->SetDefaultScale(dng_urational(sizes->iwidth, sizes->width), dng_urational(sizes->iheight, sizes->height));
+    m_negative->SetActiveArea(dng_rect(sizes->top_margin, sizes->left_margin,
+                                       sizes->top_margin + sizes->height, sizes->left_margin + sizes->width));
 
-    m_negative->SetDefaultScale(dng_urational(outputWidth, visibleWidth), 
-    							dng_urational(outputHeight, visibleHeight));
-
-    if (iparams->filters != 0) {
-        m_negative->SetDefaultCropOrigin(dng_urational(8, 1), dng_urational(8, 1));
-		m_negative->SetDefaultCropSize(dng_urational(visibleWidth - 16, 1), dng_urational(visibleHeight - 16, 1));
-    }
-    else {
-        m_negative->SetDefaultCropOrigin(dng_urational(0, 1), dng_urational(0, 1));
-		m_negative->SetDefaultCropSize(dng_urational(visibleWidth, 1), dng_urational(visibleHeight, 1));
-    }
-
-    m_negative->SetActiveArea(dng_rect(sizes->top_margin,
-			                           sizes->left_margin,
-			                           sizes->top_margin + visibleHeight,
-			                           sizes->left_margin + visibleWidth));
+    int interpolationFrame = iparams->filters == 0 ? 0 : 8;
+    m_negative->SetDefaultCropOrigin(interpolationFrame, interpolationFrame);
+    m_negative->SetDefaultCropSize(sizes->width - 2 * interpolationFrame, sizes->height - 2 * interpolationFrame);
 
     // -----------------------------------------------------------------------------------------
     // CameraNeutral
@@ -196,8 +193,7 @@ void NegativeProcessor::setDNGPropertiesFromRaw() {
     for (int i = 0; i < 4; i++)
 	    m_negative->SetWhiteLevel(static_cast<uint32>(colors->maximum), i);
 
-    if ((m_negative->GetMosaicInfo() != NULL) && 
-    	(m_negative->GetMosaicInfo()->fCFAPatternSize == dng_point(2, 2)))
+    if ((m_negative->GetMosaicInfo() != NULL) && (m_negative->GetMosaicInfo()->fCFAPatternSize == dng_point(2, 2)))
         m_negative->SetQuadBlacks(colors->black + colors->cblack[0],
                                   colors->black + colors->cblack[1],
                                   colors->black + colors->cblack[2],
@@ -208,13 +204,15 @@ void NegativeProcessor::setDNGPropertiesFromRaw() {
     // -----------------------------------------------------------------------------------------
     // Fixed properties
 
-    m_negative->SetBaselineExposure(0.0);
+    m_negative->SetBaselineExposure(0.0); // should be camera-specific
     m_negative->SetBaselineNoise(1.0);
     m_negative->SetBaselineSharpness(1.0);
-    m_negative->SetAntiAliasStrength(dng_urational(100, 100));
-    m_negative->SetLinearResponseLimit(1.0);
-    m_negative->SetShadowScale(dng_urational(1, 1));
+
+    // default
+    m_negative->SetAntiAliasStrength(dng_urational(100, 100));  // = no aliasing artifacts
+    m_negative->SetLinearResponseLimit(1.0);                    // = no non-linear sensor response
     m_negative->SetAnalogBalance(dng_vector_3(1.0, 1.0, 1.0));
+    m_negative->SetShadowScale(dng_urational(1, 1));
 }
 
 
@@ -256,7 +254,7 @@ void NegativeProcessor::setCameraProfile(const char *dcpFilename) {
             }
             prof->SetColorMatrix1(*colormatrix1);
         }
-        prof->SetProfileCalibrationSignature("com.raw2dng");
+        prof->SetProfileCalibrationSignature("com.fimagena.raw2dng");
     }
 
     m_negative->AddProfile(prof);
@@ -461,6 +459,12 @@ void NegativeProcessor::setExifFromRaw(const dng_date_time_info &dateTimeNow, co
 
 
 void NegativeProcessor::setXmpFromRaw(const dng_date_time_info &dateTimeNow, const dng_string &appNameVersion) {
+    // TODO: replace the below with an iterator through XmpData - more efficient than encoding and parsing
+    // for (Exiv2::XmpData::const_iterator it = m_RawXmp.begin(); it != m_RawXmp.end(); it++) {}
+    //     printf("key: %s, family: %s, group: %s, tagname: %s, taglabel: %s, toString: %s\n",
+    //     it->key().c_str(), it->familyName(), it->groupName().c_str(), it->tagName().c_str(), it->tagLabel().c_str(), it->toString().c_str());
+    // }
+
     std::string xmpPacket;
     if (Exiv2::XmpParser::encode(xmpPacket, m_RawXmp) != 0)
         throw std::runtime_error("Failed to serialize XMP data!");
