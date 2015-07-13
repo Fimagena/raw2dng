@@ -150,8 +150,8 @@ void VariousVendorProcessor::setExifFromRaw(const dng_date_time_info &dateTimeNo
     getRawExifTag("Exif.CanonFi.FileNumber", 0, &negExif->fImageNumber);
 
     // checked
-    if ((negExif->fISOSpeedRatings[0] == 0) && getRawExifTag("Exif.CanonSi.ISOSpeed", 0, &tmp_uint32)) 
-        negExif->fISOSpeedRatings[0] = tmp_uint32;
+    if (negExif->fISOSpeedRatings[0] == 0) 
+        getInterpretedRawExifTag("Exif.CanonSi.ISOSpeed", 0, &negExif->fISOSpeedRatings[0]);
 
     // -----------------------------------------------------------------------------------------
     // Pentax Makernotes
