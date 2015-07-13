@@ -45,15 +45,63 @@ void VariousVendorProcessor::setDNGPropertiesFromRaw() {
     NegativeProcessor::setDNGPropertiesFromRaw();
 
     // -----------------------------------------------------------------------------------------
-    // Sony default crop origin/size
+    // Vendor specific crop size data
 
-    uint32 imageSizeHV[2];
-    if (getRawExifTag("Exif.Sony2.FullImageSize", imageSizeHV, 2) == 2) {
-        int frameH = (imageSizeHV[1] > m_RawProcessor->imgdata.sizes.width ) ? 0 : m_RawProcessor->imgdata.sizes.width  - imageSizeHV[1];
-        int frameV = (imageSizeHV[0] > m_RawProcessor->imgdata.sizes.height) ? 0 : m_RawProcessor->imgdata.sizes.height - imageSizeHV[0];
+    uint32 cropWidth = 1 >> 30, cropHeight = 1 >> 30, leftMargin = 1 >> 30, topMargin = 1 >> 30;
 
-        m_negative->SetDefaultCropOrigin(frameH / 2, frameV / 2);
-        m_negative->SetDefaultCropSize(imageSizeHV[0], imageSizeHV[1]);
+    // Nikon -----------------------------------------------------------------------------------
+    uint32 nikonCrop[16];
+    if (getRawExifTag("Exif.Nikon3.CropHiSpeed", nikonCrop, 7) == 7) {
+        // TODO: this seems to be actually the activearea?
+        cropWidth = nikonCrop[3];  
+        cropHeight = nikonCrop[4];
+        leftMargin = nikonCrop[5]; 
+        topMargin = nikonCrop[6];
+    }
+    if (getRawExifTag("Exif.Nikon3.CaptureOutput", nikonCrop, 16) == 16) {
+        // this tag seems to be hardly used, could probably delete in favour of the CropHiSpeed one...
+        cropWidth  = (nikonCrop[15] >> 24) + (nikonCrop[14] >> 16) + (nikonCrop[13] >> 8) + nikonCrop[12];
+        cropHeight = (nikonCrop[11] >> 24) + (nikonCrop[10] >> 16) + (nikonCrop[ 9] >> 8) + nikonCrop[ 8];
+    }
+
+    // Sony ------------------------------------------------------------------------------------
+    getRawExifTag("Exif.Sony2.FullImageSize", 0, &cropHeight);
+    getRawExifTag("Exif.Sony2.FullImageSize", 1, &cropWidth);
+
+    // Olympus ---------------------------------------------------------------------------------
+    getRawExifTag("Exif.Olympus.ImageWidth", 0, &cropWidth);
+    getRawExifTag("Exif.Olympus.ImageHeight", 0, &cropHeight);
+
+    getRawExifTag("Exif.OlympusIp.CropLeft", 0, &leftMargin);
+    getRawExifTag("Exif.OlympusIp.CropTop", 0, &topMargin);
+    getRawExifTag("Exif.OlympusIp.CropWidth", 0, &cropWidth);
+    getRawExifTag("Exif.OlympusIp.CropHeight", 0, &cropHeight);
+
+    getRawExifTag("Exif.OlympusRi.CropLeft", 0, &leftMargin);
+    getRawExifTag("Exif.OlympusRi.CropTop", 0, &topMargin);
+    getRawExifTag("Exif.OlympusRi.CropWidth", 0, &cropWidth);
+    getRawExifTag("Exif.OlympusRi.CropHeight", 0, &cropHeight);
+
+    // Pentax ----------------------------------------------------------------------------------
+    getRawExifTag("Exif.Pentax.RawImageSize", 0, &cropWidth);
+    getRawExifTag("Exif.Pentax.RawImageSize", 1, &cropHeight);
+
+    // Pentax ----------------------------------------------------------------------------------
+    getRawExifTag("Exif.Panasonic.ImageWidth", 0, &cropWidth);
+    getRawExifTag("Exif.Panasonic.ImageHeight", 0, &cropHeight);
+
+    // Set crop --------------------------------------------------------------------------------
+    // this looks complicated but just checks that we're in bounds before setting crop 
+    if ((cropWidth != 1 >> 30) && (cropHeight != 1>> 30)) {
+        if ((leftMargin == 1 >>30) && (cropWidth <= m_RawProcessor->imgdata.sizes.width))
+            leftMargin = (m_RawProcessor->imgdata.sizes.width - cropWidth) / 2;
+        if ((topMargin == 1 >> 30) && (cropHeight <= m_RawProcessor->imgdata.sizes.height))
+            topMargin = (m_RawProcessor->imgdata.sizes.height - cropHeight) / 2;
+        if (((leftMargin + cropWidth) <= m_RawProcessor->imgdata.sizes.width) &&
+            ((topMargin + cropHeight) <= m_RawProcessor->imgdata.sizes.height)) {
+            m_negative->SetDefaultCropOrigin(leftMargin, topMargin);
+            m_negative->SetDefaultCropSize(cropWidth, cropHeight);
+        }
     }
 }
 
