@@ -49,7 +49,8 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
     // -----------------------------------------------------------------------------------------
     // Init SDK and create processor
 
-    std::cout << "Starting DNG conversion:\n";
+    std::cout << "Starting DNG conversion: \"" << rawFilename << "\" to \"" << dngFilename << "\"\n";
+    std::time_t startTime = std::time(NULL);
 
     dng_xmp_sdk::InitializeSDK();
 
@@ -162,7 +163,7 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
 
     dng_xmp_sdk::TerminateSDK();
 
-    std::cout << "--> Done\n";
+    std::cout << "--> Done (" << std::difftime(std::time(NULL), startTime) << " seconds)\n\n";
 }
 
 
