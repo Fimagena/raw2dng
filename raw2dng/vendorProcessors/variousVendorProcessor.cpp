@@ -28,17 +28,6 @@
 
 #include "variousVendorProcessor.h"
 
-static uint32 pentaxIsoCodes[65][2] = {
-       {3, 50},      {4, 64},      {5, 80},     {6, 100},     {7, 125},    {8, 160},    {9, 200},    {10, 250}, 
-     {11, 320},    {12, 400},    {13, 500},    {14, 640},    {15, 800},  {16, 1000},  {17, 1250},   {18, 1600}, 
-    {19, 2000},   {20, 2500},   {21, 3200},   {22, 4000},   {23, 5000},  {24, 6400},  {25, 8000},  {26, 10000}, 
-   {27, 12800},  {28, 16000},  {29, 20000},  {30, 25600},  {31, 32000}, {32, 40000}, {33, 51200},  {34, 64000}, 
-   {35, 80000}, {36, 102400}, {37, 128000}, {38, 160000}, {39, 204800},    {50, 50},  {100, 100},   {200, 200}, 
-     {258, 50},    {259, 70},   {260, 100},   {261, 140},   {262, 200},  {263, 280},  {264, 400},   {265, 560}, 
-    {266, 800},  {267, 1100},  {268, 1600},  {269, 2200},  {270, 3200}, {271, 4500}, {272, 6400},  {273, 9000}, 
-  {274, 12800}, {275, 18000}, {276, 25600}, {277, 36000}, {278, 51200},  {400, 400},  {800, 800}, {1600, 1600}, 
-  {3200, 3200}};
-
 
 VariousVendorProcessor::VariousVendorProcessor(AutoPtr<dng_host> &host, AutoPtr<dng_negative> &negative, 
                                                LibRaw *rawProcessor, Exiv2::Image::AutoPtr &rawImage)
@@ -176,10 +165,8 @@ void VariousVendorProcessor::setExifFromRaw(const dng_date_time_info &dateTimeNo
     }
 
     // checked
-    if ((negExif->fISOSpeedRatings[0] == 0) && getRawExifTag("Exif.Pentax.ISO", 0, &tmp_uint32)) {
-        for (int i = 0; i < 65; i++)
-            if (pentaxIsoCodes[i][0] == tmp_uint32) negExif->fISOSpeedRatings[0] = pentaxIsoCodes[i][1];
-    }
+    if (negExif->fISOSpeedRatings[0] == 0) 
+        getInterpretedRawExifTag("Exif.Pentax.ISO", 0, &negExif->fISOSpeedRatings[0]);
 
     // -----------------------------------------------------------------------------------------
     // Olympus Makernotes

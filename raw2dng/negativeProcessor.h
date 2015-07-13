@@ -47,6 +47,8 @@ protected:
    virtual dng_memory_stream* createDNGPrivateTag();
 
    // helper functions
+   bool getInterpretedRawExifTag(const char* exifTagName, int32 component, uint32* value);
+
    bool getRawExifTag(const char* exifTagName, dng_string* value);
    bool getRawExifTag(const char* exifTagName, dng_date_time_info* value);
    bool getRawExifTag(const char* exifTagName, int32 component, dng_srational* rational);

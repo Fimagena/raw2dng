@@ -658,6 +658,20 @@ void NegativeProcessor::embedOriginalRaw(const char *rawFilename) {
 // -----------------------------------------------------------------------------------------
 // Protected helper functions
 
+bool NegativeProcessor::getInterpretedRawExifTag(const char* exifTagName, int32 component, uint32* value) {
+    Exiv2::ExifData::const_iterator it = m_RawExif.findKey(Exiv2::ExifKey(exifTagName));
+    if (it == m_RawExif.end()) return false;
+
+    std::stringstream interpretedValue; it->write(interpretedValue, &m_RawExif);
+
+    uint32 tmp;
+    for (int i = 0; (i <= component) && !interpretedValue.fail(); i++) interpretedValue >> tmp;
+    if (interpretedValue.fail()) return false;
+
+    *value = tmp;
+    return true;
+}
+
 bool NegativeProcessor::getRawExifTag(const char* exifTagName, dng_string* value) {
     Exiv2::ExifData::const_iterator it = m_RawExif.findKey(Exiv2::ExifKey(exifTagName));
     if (it == m_RawExif.end()) return false;
