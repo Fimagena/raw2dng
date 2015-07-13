@@ -86,7 +86,7 @@ void VariousVendorProcessor::setDNGPropertiesFromRaw() {
     getRawExifTag("Exif.Pentax.RawImageSize", 0, &cropWidth);
     getRawExifTag("Exif.Pentax.RawImageSize", 1, &cropHeight);
 
-    // Pentax ----------------------------------------------------------------------------------
+    // Panasonic -------------------------------------------------------------------------------
     getRawExifTag("Exif.Panasonic.ImageWidth", 0, &cropWidth);
     getRawExifTag("Exif.Panasonic.ImageHeight", 0, &cropHeight);
 
