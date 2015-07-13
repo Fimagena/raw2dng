@@ -36,6 +36,7 @@
 #include <zlib.h>
 
 #include <exiv2/image.hpp>
+#include <exiv2/xmp.hpp>
 #include <libraw/libraw.h>
 
 
@@ -172,9 +173,18 @@ void NegativeProcessor::setDNGPropertiesFromRaw() {
     m_negative->SetActiveArea(dng_rect(sizes->top_margin, sizes->left_margin,
                                        sizes->top_margin + sizes->height, sizes->left_margin + sizes->width));
 
-    int interpolationFrame = iparams->filters == 0 ? 0 : 8;
-    m_negative->SetDefaultCropOrigin(interpolationFrame, interpolationFrame);
-    m_negative->SetDefaultCropSize(sizes->width - 2 * interpolationFrame, sizes->height - 2 * interpolationFrame);
+    uint32 cropWidth, cropHeight;
+    if (!getRawExifTag("Exif.Photo.PixelXDimension", 0, &cropWidth) ||
+        !getRawExifTag("Exif.Photo.PixelYDimension", 0, &cropHeight)) {
+        cropWidth = sizes->width - 16;
+        cropHeight = sizes->height - 16;
+    }
+
+    int cropLeftMargin = (cropWidth > sizes->width ) ? 0 : (sizes->width  - cropWidth) / 2;
+    int cropTopMargin = (cropHeight > sizes->height) ? 0 : (sizes->height - cropHeight) / 2;
+
+    m_negative->SetDefaultCropOrigin(cropLeftMargin, cropTopMargin);
+    m_negative->SetDefaultCropSize(cropWidth, cropHeight);
 
     // -----------------------------------------------------------------------------------------
     // CameraNeutral
@@ -204,7 +214,7 @@ void NegativeProcessor::setDNGPropertiesFromRaw() {
     // -----------------------------------------------------------------------------------------
     // Fixed properties
 
-    m_negative->SetBaselineExposure(0.0); // should be camera-specific
+    m_negative->SetBaselineExposure(0.0);                       // should be fixed per camera
     m_negative->SetBaselineNoise(1.0);
     m_negative->SetBaselineSharpness(1.0);
 
@@ -459,27 +469,21 @@ void NegativeProcessor::setExifFromRaw(const dng_date_time_info &dateTimeNow, co
 
 
 void NegativeProcessor::setXmpFromRaw(const dng_date_time_info &dateTimeNow, const dng_string &appNameVersion) {
-    // TODO: replace the below with an iterator through XmpData - more efficient than encoding and parsing
-    // for (Exiv2::XmpData::const_iterator it = m_RawXmp.begin(); it != m_RawXmp.end(); it++) {}
-    //     printf("key: %s, family: %s, group: %s, tagname: %s, taglabel: %s, toString: %s\n",
-    //     it->key().c_str(), it->familyName(), it->groupName().c_str(), it->tagName().c_str(), it->tagLabel().c_str(), it->toString().c_str());
-    // }
-
-    std::string xmpPacket;
-    if (Exiv2::XmpParser::encode(xmpPacket, m_RawXmp) != 0)
-        throw std::runtime_error("Failed to serialize XMP data!");
-    Exiv2::XmpParser::terminate();
+    // -----------------------------------------------------------------------------------------
+    // Copy existing XMP-tags in raw-file to DNG
 
     AutoPtr<dng_xmp> negXmp(new dng_xmp(m_host->Allocator()));
-    negXmp->Parse(*m_host, xmpPacket.c_str(), xmpPacket.length());
+    for (Exiv2::XmpData::const_iterator it = m_RawXmp.begin(); it != m_RawXmp.end(); it++)
+        negXmp->Set(Exiv2::XmpProperties::nsInfo(it->groupName())->ns_, it->tagName().c_str(), it->toString().c_str());
+
+    // -----------------------------------------------------------------------------------------
+    // Set some base-XMP tags (incl. redundant creation date under Photoshop namespace - just to stay close to Adobe...)
 
     negXmp->UpdateDateTime(dateTimeNow);
     negXmp->UpdateMetadataDate(dateTimeNow);
-    // Redundant creation date - just to stay close to Adobe...
-    negXmp->SetString(XMP_NS_PHOTOSHOP, "DateCreated", m_negative->GetExif()->fDateTimeOriginal.Encode_ISO_8601());
-
     negXmp->SetString(XMP_NS_XAP, "CreatorTool", appNameVersion);
     negXmp->Set(XMP_NS_DC, "format", "image/dng");
+    negXmp->SetString(XMP_NS_PHOTOSHOP, "DateCreated", m_negative->GetExif()->fDateTimeOriginal.Encode_ISO_8601());
 
     m_negative->ResetXMP(negXmp.Release());
 }
@@ -562,7 +566,7 @@ dng_image* NegativeProcessor::buildDNGImage() {
             for (unsigned int col = 0; col < sizes->raw_width; col++)
                 for (uint32 color = 0; color < colors; color++) {
                     *imageBuffer = rawBuffer[(row * sizes->raw_width + col) * colors + color];
-                    ++imageBuffer;
+                    imageBuffer++;
                 }
     }
 
