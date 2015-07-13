@@ -92,9 +92,9 @@ void VariousVendorProcessor::setExifFromRaw(const dng_date_time_info &dateTimeNo
 
     // checked
     if (negExif->fISOSpeedRatings[0] == 0) {
-        if (getRawExifTag("Exif.Nikon1.ISOSpeed", 1, &tmp_uint32)) negExif->fISOSpeedRatings[0] = tmp_uint32;
-        if (getRawExifTag("Exif.Nikon2.ISOSpeed", 1, &tmp_uint32)) negExif->fISOSpeedRatings[0] = tmp_uint32;
-        if (getRawExifTag("Exif.Nikon3.ISOSpeed", 1, &tmp_uint32)) negExif->fISOSpeedRatings[0] = tmp_uint32;
+        getRawExifTag("Exif.Nikon1.ISOSpeed", 1, &negExif->fISOSpeedRatings[0]);
+        getRawExifTag("Exif.Nikon2.ISOSpeed", 1, &negExif->fISOSpeedRatings[0]);
+        getRawExifTag("Exif.Nikon3.ISOSpeed", 1, &negExif->fISOSpeedRatings[0]);
     }
 
     // -----------------------------------------------------------------------------------------
