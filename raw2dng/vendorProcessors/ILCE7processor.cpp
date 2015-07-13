@@ -168,21 +168,18 @@ ILCE7processor::ILCE7processor(AutoPtr<dng_host> &host, AutoPtr<dng_negative> &n
 void ILCE7processor::setDNGPropertiesFromRaw() {
     NegativeProcessor::setDNGPropertiesFromRaw();
 
-    m_negative->SetWhiteLevel(16300, 0);
-    m_negative->SetWhiteLevel(16300, 1);
-    m_negative->SetWhiteLevel(16300, 2);
-    m_negative->SetWhiteLevel(16300, 3);
-
     // -----------------------------------------------------------------------------------------
     // Adjust default crop
 
-    uint32 imageSizeHV[2];
-    if (getRawExifTag("Exif.Sony2.FullImageSize", imageSizeHV, 2) == 2) {
-        int frameH = (imageSizeHV[1] > m_RawProcessor->imgdata.sizes.width ) ? 0 : m_RawProcessor->imgdata.sizes.width  - imageSizeHV[1];
-        int frameV = (imageSizeHV[0] > m_RawProcessor->imgdata.sizes.height) ? 0 : m_RawProcessor->imgdata.sizes.height - imageSizeHV[0];
+    uint32 cropWidth, cropHeight;
+    if (getRawExifTag("Exif.Sony2.FullImageSize", 0, &cropHeight) && 
+        getRawExifTag("Exif.Sony2.FullImageSize", 1, &cropWidth)) {
+
+        int frameH = (cropWidth > m_RawProcessor->imgdata.sizes.width ) ? 0 : m_RawProcessor->imgdata.sizes.width  - cropWidth;
+        int frameV = (cropHeight > m_RawProcessor->imgdata.sizes.height) ? 0 : m_RawProcessor->imgdata.sizes.height - cropHeight;
 
         m_negative->SetDefaultCropOrigin(frameH / 2, frameV / 2);
-        m_negative->SetDefaultCropSize(imageSizeHV[0], imageSizeHV[1]);
+        m_negative->SetDefaultCropSize(cropWidth, cropHeight);
     }
 
     // -----------------------------------------------------------------------------------------
@@ -224,6 +221,11 @@ void ILCE7processor::setDNGPropertiesFromRaw() {
 
     // -----------------------------------------------------------------------------------------
     // Overwrite some fixed properties with A7-specific values
+
+    m_negative->SetWhiteLevel(16300, 0);
+    m_negative->SetWhiteLevel(16300, 1);
+    m_negative->SetWhiteLevel(16300, 2);
+    m_negative->SetWhiteLevel(16300, 3);
 
     m_negative->SetGreenSplit(250);
     m_negative->SetBaselineExposure(0.35);
