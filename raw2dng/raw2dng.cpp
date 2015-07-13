@@ -169,16 +169,13 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
 
 int main(int argc, const char* argv []) {  
     if (argc == 1) {
-        fprintf(stderr,
-                "\n"
-                "raw2dng - DNG converter\n"
-                "Usage: %s [options] <rawfile>\n"
-                "Valid options:\n"
-                "  -dcp <filename>      use adobe camera profile\n"
-                "  -e                   embed original\n"
-                "  -o <filename>        specify output filename\n",
-                argv[0]);
-
+        std::cerr << "\n"
+                     "raw2dng - DNG converter\n"
+                     "Usage: " << argv[0] << " [options] <rawfile>\n"
+                     "Valid options:\n"
+                     "  -dcp <filename>      use adobe camera profile\n"
+                     "  -e                   embed original\n"
+                     "  -o <filename>        specify output filename\n\n";
         return -1;
     }
 
@@ -198,7 +195,7 @@ int main(int argc, const char* argv []) {
     }
 
     if (index == argc) {
-        fprintf (stderr, "no file specified\n");
+        std::cerr << "No file specified\n";
         return 1;
     }
 
@@ -217,6 +214,7 @@ int main(int argc, const char* argv []) {
         raw2dng(rawFilename, dngFilename, dcpFilename, embedOriginal);
     }
     catch (std::exception& e) {
+        std::cerr << "--> Error! (" << e.what() << ")\n\n";
         return -1;
     }
 
