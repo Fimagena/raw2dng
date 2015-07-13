@@ -252,7 +252,7 @@
 /// 1 to use XMPDocOps.
 
 #ifndef qDNGXMPDocOps
-#define qDNGXMPDocOps (!qDNGValidateTarget)
+#define qDNGXMPDocOps 0 // FORK: (!qDNGValidateTarget)
 #endif
 
 /*****************************************************************************/

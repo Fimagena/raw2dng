@@ -49,7 +49,7 @@ ENDIF(NOT WIN32)
 
 # Level of debug info in the console.
 ADD_DEFINITIONS(-DqDNGDebug=0)
-ADD_DEFINITIONS(-DqDNGValidateTarget=1)
+ADD_DEFINITIONS(-DqDNGValidateTarget=0)
 
 SET( LIBDNGSDK_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_1d_function.cpp
