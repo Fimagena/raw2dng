@@ -69,40 +69,14 @@ void FujiProcessor::setDNGPropertiesFromRaw() {
 
 
 dng_image* FujiProcessor::buildDNGImage() {
-    if (!m_fujiRotate90) return NegativeProcessor::buildDNGImage();
+    dng_image *dngImage = NegativeProcessor::buildDNGImage();
 
-    libraw_image_sizes_t *sizes = &m_RawProcessor->imgdata.sizes;
+// TODO: FIXME
+/*    if (m_fujiRotate90) {
+        dng_rect rotatedRect(dngImage->fBounds.W(), dngImage->fBounds.H());
+        dngImage->fBounds = rotatedRect;
+    }*/
 
-    // -----------------------------------------------------------------------------------------
-    // Create new dng_image with right dimensions // this section is mostly copied from NegativeProcessor
-
-    uint32 rawWidth  = std::max(static_cast<uint32>(sizes->raw_width),  static_cast<uint32>(sizes->width  + sizes->left_margin));
-    uint32 rawHeight = std::max(static_cast<uint32>(sizes->raw_height), static_cast<uint32>(sizes->height + sizes->top_margin ));
-    dng_rect bounds = dng_rect(rawWidth, rawHeight); // CHANGE from negativeProcessor
-
-    int planes = (m_RawProcessor->imgdata.idata.filters == 0) ? 3 : 1;
-
-    dng_simple_image *image = new dng_simple_image(bounds, planes, ttShort, m_host->Allocator());
-
-    dng_pixel_buffer buffer; image->GetPixelBuffer(buffer);
-    unsigned short *imageBuffer = (unsigned short*)buffer.fData;
-
-    // -----------------------------------------------------------------------------------------
-    // Select right data source and copy sensor data from raw-file to DNG-image
-
-    unsigned short *rawBuffer = m_RawProcessor->imgdata.rawdata.raw_image;
-    if (rawBuffer == NULL) rawBuffer = (unsigned short*) m_RawProcessor->imgdata.rawdata.color3_image;
-    if (rawBuffer == NULL) rawBuffer = (unsigned short*) m_RawProcessor->imgdata.rawdata.color4_image;
-
-    unsigned int colors = m_RawProcessor->imgdata.idata.colors;
-    if (rawBuffer == m_RawProcessor->imgdata.rawdata.raw_image) colors = 1; // this is probably not necessary, need to check LibRaw sources
-
-    for (unsigned int col = 0; col < sizes->raw_width; col++)
-        for (unsigned int row = 0; row < sizes->raw_height; row++)
-            for (uint32 color = 0; color < colors; color++) {
-                *imageBuffer = rawBuffer[(row * sizes->raw_width + col) * colors + color];
-                ++imageBuffer;
-            }
-
-    return dynamic_cast<dng_image*>(image);
+    return dngImage;
 }
+

@@ -539,35 +539,39 @@ dng_image* NegativeProcessor::buildDNGImage() {
     libraw_image_sizes_t *sizes = &m_RawProcessor->imgdata.sizes;
 
     // -----------------------------------------------------------------------------------------
-    // Create new dng_image with right dimensions
+    // Select right data source from LibRaw
 
-    uint32 rawWidth  = std::max(static_cast<uint32>(sizes->raw_width),  static_cast<uint32>(sizes->width  + sizes->left_margin));
-    uint32 rawHeight = std::max(static_cast<uint32>(sizes->raw_height), static_cast<uint32>(sizes->height + sizes->top_margin ));
-    dng_rect bounds = dng_rect(rawHeight, rawWidth);
+    unsigned short *rawBuffer = (unsigned short*) m_RawProcessor->imgdata.rawdata.raw_image;
+    uint32 inputPlanes = 1;
 
-    int planes = (m_RawProcessor->imgdata.idata.filters == 0) ? 3 : 1;
+    if (rawBuffer == NULL) {
+        rawBuffer = (unsigned short*) m_RawProcessor->imgdata.rawdata.color3_image;
+        inputPlanes = 3;
+    }
+    if (rawBuffer == NULL) {
+        rawBuffer = (unsigned short*) m_RawProcessor->imgdata.rawdata.color4_image;
+        inputPlanes = 4;
+    }
 
-    dng_simple_image *image = new dng_simple_image(bounds, planes, ttShort, m_host->Allocator());
+    uint32 outputPlanes = (inputPlanes == 1) ? 1 : m_RawProcessor->imgdata.idata.colors;
+
+    // -----------------------------------------------------------------------------------------
+    // Create new dng_image and copy data
+
+    dng_rect bounds = dng_rect(sizes->raw_height, sizes->raw_width);
+    dng_simple_image *image = new dng_simple_image(bounds, outputPlanes, ttShort, m_host->Allocator());
 
     dng_pixel_buffer buffer; image->GetPixelBuffer(buffer);
     unsigned short *imageBuffer = (unsigned short*)buffer.fData;
 
-    // -----------------------------------------------------------------------------------------
-    // Select right data source and copy sensor data from raw-file to DNG-image
-
-    if (m_RawProcessor->imgdata.rawdata.raw_image != NULL)
-        memcpy(imageBuffer, m_RawProcessor->imgdata.rawdata.raw_image, sizes->raw_height * sizes->raw_width * sizeof(unsigned short));
+    if (inputPlanes == outputPlanes)
+        memcpy(imageBuffer, rawBuffer, sizes->raw_height * sizes->raw_width * outputPlanes * sizeof(unsigned short));
     else {
-        unsigned short *rawBuffer = (unsigned short*) m_RawProcessor->imgdata.rawdata.color3_image;
-        if (rawBuffer == NULL) rawBuffer = (unsigned short*) m_RawProcessor->imgdata.rawdata.color4_image;
-        const unsigned int colors = m_RawProcessor->imgdata.idata.colors;
-
-        for (unsigned int row = 0; row < sizes->raw_height; row++)
-            for (unsigned int col = 0; col < sizes->raw_width; col++)
-                for (uint32 color = 0; color < colors; color++) {
-                    *imageBuffer = rawBuffer[(row * sizes->raw_width + col) * colors + color];
-                    imageBuffer++;
-                }
+        for (uint32 i = 0; i < (sizes->raw_height * sizes->raw_width; i++) {
+            memcpy(imageBuffer, rawBuffer, outputPlanes * sizeof(unsigned short));
+            imageBuffer += outputPlanes;
+            rawBuffer += inputPlanes;
+        }
     }
 
     return dynamic_cast<dng_image*>(image);
