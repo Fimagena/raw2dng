@@ -15,5 +15,5 @@ include $(BUILD_SHARED_LIBRARY)
 
 $(call import-module,raw2dng/libdng)
 $(call import-module,exiv2-0.25)
-$(call import-module,LibRaw-0.17.0-Alpha4)
+$(call import-module,LibRaw-0.17.0-Beta2)
 
