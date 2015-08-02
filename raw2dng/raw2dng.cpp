@@ -23,6 +23,8 @@
 #include "config.h"
 #include "raw2dng.h"
 
+#include <stdexcept>
+
 #include "dng_negative.h"
 #include "dng_preview.h"
 #include "dng_xmp_sdk.h"
@@ -31,6 +33,7 @@
 #include "dng_render.h"
 #include "dng_image_writer.h"
 #include "dng_color_space.h"
+#include "dng_exceptions.h"
 
 #include "negativeProcessor.h"
 #include "dnghost.h"
@@ -154,8 +157,14 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
 
     publishProgressUpdate("writing DNG file");
 
-    dng_file_stream filestream(dngFilename.c_str(), true);
-    writer.WriteDNG(*host, filestream, *negative.Get(), &previewList);
+    try {
+        dng_file_stream filestream(dngFilename.c_str(), true);
+        writer.WriteDNG(*host, filestream, *negative.Get(), &previewList);
+    }
+    catch (dng_exception& e) {
+        std::stringstream error; error << "Error while writing DNG-file! (code: " << e.ErrorCode() << ")";
+        throw std::runtime_error(error.str());
+    }
 
     // -----------------------------------------------------------------------------------------
 
