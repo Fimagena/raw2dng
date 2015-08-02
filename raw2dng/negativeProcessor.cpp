@@ -567,7 +567,7 @@ dng_image* NegativeProcessor::buildDNGImage() {
     if (inputPlanes == outputPlanes)
         memcpy(imageBuffer, rawBuffer, sizes->raw_height * sizes->raw_width * outputPlanes * sizeof(unsigned short));
     else {
-        for (uint32 i = 0; i < (sizes->raw_height * sizes->raw_width; i++) {
+        for (uint32 i = 0; i < (sizes->raw_height * sizes->raw_width); i++) {
             memcpy(imageBuffer, rawBuffer, outputPlanes * sizeof(unsigned short));
             imageBuffer += outputPlanes;
             rawBuffer += inputPlanes;
