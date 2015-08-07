@@ -473,8 +473,19 @@ void NegativeProcessor::setXmpFromRaw(const dng_date_time_info &dateTimeNow, con
     // Copy existing XMP-tags in raw-file to DNG
 
     AutoPtr<dng_xmp> negXmp(new dng_xmp(m_host->Allocator()));
-    for (Exiv2::XmpData::const_iterator it = m_RawXmp.begin(); it != m_RawXmp.end(); it++)
-        negXmp->Set(Exiv2::XmpProperties::nsInfo(it->groupName())->ns_, it->tagName().c_str(), it->toString().c_str());
+    for (Exiv2::XmpData::const_iterator it = m_RawXmp.begin(); it != m_RawXmp.end(); it++) {
+        try {
+            negXmp->Set(Exiv2::XmpProperties::nsInfo(it->groupName())->ns_, it->tagName().c_str(), it->toString().c_str());
+        }
+        catch (dng_exception& e) {
+            // the above will throw an exception when trying to add XMPs with unregistered (i.e., unknown) 
+            // namespaces -- we just drop them here.
+            std::cerr << "Dropped XMP-entry from raw-file since namespace is unknown: "
+                         "NS: "   << Exiv2::XmpProperties::nsInfo(it->groupName())->ns_ << ", "
+                         "path: " << it->tagName().c_str() << ", "
+                         "text: " << it->toString().c_str() << "\n";
+        }
+    }
 
     // -----------------------------------------------------------------------------------------
     // Set some base-XMP tags (incl. redundant creation date under Photoshop namespace - just to stay close to Adobe...)
@@ -567,7 +578,7 @@ dng_image* NegativeProcessor::buildDNGImage() {
     if (inputPlanes == outputPlanes)
         memcpy(imageBuffer, rawBuffer, sizes->raw_height * sizes->raw_width * outputPlanes * sizeof(unsigned short));
     else {
-        for (uint32 i = 0; i < (sizes->raw_height * sizes->raw_width); i++) {
+        for (int i = 0; i < (sizes->raw_height * sizes->raw_width); i++) {
             memcpy(imageBuffer, rawBuffer, outputPlanes * sizeof(unsigned short));
             imageBuffer += outputPlanes;
             rawBuffer += inputPlanes;
