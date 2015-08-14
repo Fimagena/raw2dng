@@ -50,7 +50,7 @@ void publishProgressUpdate(const char *message) {
 
 void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFilename, bool embedOriginal) {
     // -----------------------------------------------------------------------------------------
-    // Init SDK and create processor
+    // Init XMP SDK and some global variables we will need
 
     std::cout << "Starting DNG conversion: \"" << rawFilename << "\" to \"" << dngFilename << "\"\n";
     std::time_t startTime = std::time(NULL);
@@ -64,17 +64,17 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
 
     AutoPtr<dng_negative> negative(host->Make_dng_negative());
 
-    publishProgressUpdate("parsing raw file");
-
-    AutoPtr<NegativeProcessor> negProcessor(NegativeProcessor::createProcessor(host, negative, rawFilename.c_str()));
-
-    // -----------------------------------------------------------------------------------------
-    // Set DNG-converter specific values we will need later
-
     dng_string appName; appName.Set("raw2dng");
     dng_string appVersion; appVersion.Set(RAW2DNG_VERSION_STR);
     dng_string appNameVersion(appName); appNameVersion.Append(" "); appNameVersion.Append(RAW2DNG_VERSION_STR);
     dng_date_time_info dateTimeNow; CurrentDateTimeAndZone(dateTimeNow);
+
+    // -----------------------------------------------------------------------------------------
+    // Create processor and parse raw files
+
+    publishProgressUpdate("parsing raw file");
+
+    AutoPtr<NegativeProcessor> negProcessor(NegativeProcessor::createProcessor(host, negative, rawFilename.c_str()));
 
     // -----------------------------------------------------------------------------------------
     // Set all metadata and properties
@@ -100,11 +100,14 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
     }
 
     // -----------------------------------------------------------------------------------------
-    // Copy raw image data and render image
+    // Copy raw sensor data
 
     publishProgressUpdate("reading raw image data");
 
     AutoPtr<dng_image> image(negProcessor->buildDNGImage());
+
+    // -----------------------------------------------------------------------------------------
+    // Render image
 
     publishProgressUpdate("building preview - linearising");
 
@@ -118,6 +121,10 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
     // -----------------------------------------------------------------------------------------
     // Render JPEG and thumbnail previews
 
+    dng_render negRender(*host, *negative);
+    negRender.SetFinalSpace(dng_space_sRGB::Get());
+    negRender.SetFinalPixelType(ttByte);
+
     publishProgressUpdate("building preview - rendering JPEG");
 
     dng_jpeg_preview *jpeg_preview = new dng_jpeg_preview();
@@ -126,15 +133,9 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
     jpeg_preview->fInfo.fDateTime = dateTimeNow.Encode_ISO_8601();
     jpeg_preview->fInfo.fColorSpace = previewColorSpace_sRGB;
 
-    dng_render negRender(*host, *negative);
-    negRender.SetFinalSpace(dng_space_sRGB::Get());
-    negRender.SetFinalPixelType(ttByte);
-
-    dng_image_writer writer;
     negRender.SetMaximumSize(1024);
     AutoPtr<dng_image> negImage(negRender.Render());
-    writer.EncodeJPEGPreview(*host, *negImage.Get(), *jpeg_preview, 5);
-
+    dng_image_writer jpegWriter; jpegWriter.EncodeJPEGPreview(*host, *negImage.Get(), *jpeg_preview, 5);
     AutoPtr<dng_preview> jp(dynamic_cast<dng_preview*>(jpeg_preview));
 
     publishProgressUpdate("building preview - rendering thumbnail");
@@ -147,7 +148,6 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
 
     negRender.SetMaximumSize(256);
     thumbnail->fImage.Reset(negRender.Render());
-
     AutoPtr<dng_preview> tn(dynamic_cast<dng_preview*>(thumbnail));
 
     dng_preview_list previewList; previewList.Append(jp); previewList.Append(tn);
@@ -159,7 +159,7 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
 
     try {
         dng_file_stream filestream(dngFilename.c_str(), true);
-        writer.WriteDNG(*host, filestream, *negative.Get(), &previewList);
+        dng_image_writer dngWriter; dngWriter.WriteDNG(*host, filestream, *negative.Get(), &previewList);
     }
     catch (dng_exception& e) {
         std::stringstream error; error << "Error while writing DNG-file! (code: " << e.ErrorCode() << ")";
@@ -167,6 +167,7 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
     }
 
     // -----------------------------------------------------------------------------------------
+    // Clean-up
 
     publishProgressUpdate("cleaning up");
 
