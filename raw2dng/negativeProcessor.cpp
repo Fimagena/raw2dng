@@ -40,8 +40,7 @@
 #include <libraw/libraw.h>
 
 
-NegativeProcessor* NegativeProcessor::createProcessor(AutoPtr<dng_host> &host, AutoPtr<dng_negative> &negative, const char *filename) {
-
+NegativeProcessor* NegativeProcessor::createProcessor(AutoPtr<dng_host> &host, const char *filename) {
     // -----------------------------------------------------------------------------------------
     // Open and parse rawfile with libraw...
 
@@ -78,19 +77,20 @@ NegativeProcessor* NegativeProcessor::createProcessor(AutoPtr<dng_host> &host, A
     // Identify and create correct processor class
 
     if (!strcmp(rawProcessor->imgdata.idata.model, "ILCE-7"))
-        return new ILCE7processor(host, negative, rawProcessor.Release(), rawImage);
+        return new ILCE7processor(host, rawProcessor.Release(), rawImage);
     else if (!strcmp(rawProcessor->imgdata.idata.make, "FUJIFILM"))
-        return new FujiProcessor(host, negative, rawProcessor.Release(), rawImage);
+        return new FujiProcessor(host, rawProcessor.Release(), rawImage);
 
-    return new VariousVendorProcessor(host, negative, rawProcessor.Release(), rawImage);
+    return new VariousVendorProcessor(host, rawProcessor.Release(), rawImage);
 }
 
 
-NegativeProcessor::NegativeProcessor(AutoPtr<dng_host> &host, AutoPtr<dng_negative> &negative, 
-                                     LibRaw *rawProcessor, Exiv2::Image::AutoPtr &rawImage)
+NegativeProcessor::NegativeProcessor(AutoPtr<dng_host> &host, LibRaw *rawProcessor, Exiv2::Image::AutoPtr &rawImage)
                                    : m_RawProcessor(rawProcessor), m_RawImage(rawImage),
                                      m_RawExif(m_RawImage->exifData()), m_RawXmp(m_RawImage->xmpData()),
-                                     m_host(host), m_negative(negative) {}
+                                     m_host(host) {
+    m_negative.Reset(m_host->Make_dng_negative());
+}
 
 
 NegativeProcessor::~NegativeProcessor() {
@@ -546,7 +546,7 @@ dng_memory_stream* NegativeProcessor::createDNGPrivateTag() {
 }
 
 
-dng_image* NegativeProcessor::buildDNGImage() {
+void NegativeProcessor::buildDNGImage() {
     libraw_image_sizes_t *sizes = &m_RawProcessor->imgdata.sizes;
 
     // -----------------------------------------------------------------------------------------
@@ -585,7 +585,8 @@ dng_image* NegativeProcessor::buildDNGImage() {
         }
     }
 
-    return dynamic_cast<dng_image*>(image);
+    AutoPtr<dng_image> castImage(dynamic_cast<dng_image*>(image));
+    m_negative->SetStage1Image(castImage);
 }
 
 

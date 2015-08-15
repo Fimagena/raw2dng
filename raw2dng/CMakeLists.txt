@@ -4,7 +4,7 @@ SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 # The version number.
 SET(RAW2DNG_VERSION_MAJOR 1)
-SET(RAW2DNG_VERSION_MINOR 0)
+SET(RAW2DNG_VERSION_MINOR 2)
 SET(RAW2DNG_VERSION_PATCH 0)
 
 # configure a header file to pass some of the CMake settings
@@ -64,6 +64,7 @@ ENDIF(NOT WIN32)
 SET( RAW2DNG_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/raw2dng.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/negativeProcessor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/rawConverter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/vendorProcessors/ILCE7processor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/vendorProcessors/FujiProcessor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/vendorProcessors/variousVendorProcessor.cpp
@@ -79,6 +80,9 @@ TARGET_LINK_LIBRARIES(raw2dng dng
                               ${ZLIB_LIBRARIES}
                               ${LIBRAW_LIBRARIES}
                               ${EXIV2_LIBRARIES})
+
+ADD_EXECUTABLE( test ${CMAKE_CURRENT_SOURCE_DIR}/test.cpp)
+TARGET_LINK_LIBRARIES (test ${EXIV2_LIBRARIES})
 
 # add the install targets
 INSTALL(TARGETS raw2dng DESTINATION bin)

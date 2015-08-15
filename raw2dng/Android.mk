@@ -6,8 +6,9 @@ LOCAL_STATIC_LIBRARIES := dng
 LOCAL_SHARED_LIBRARIES := exiv2 raw
 LOCAL_LDLIBS += -lz -llog
 LOCAL_CPP_FEATURES += exceptions
-LOCAL_SRC_FILES := raw2dng.cpp \
+LOCAL_SRC_FILES := raw2dng-jni.cpp \
                    negativeProcessor.cpp \
+                   rawConverter.cpp \
                    vendorProcessors/ILCE7processor.cpp \
                    vendorProcessors/FujiProcessor.cpp \
                    vendorProcessors/variousVendorProcessor.cpp

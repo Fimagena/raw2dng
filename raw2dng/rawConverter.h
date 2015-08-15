@@ -18,20 +18,35 @@
 
 #pragma once
 
-#include "../negativeProcessor.h"
+#include "negativeProcessor.h"
+
+#include <string>
+
+#include "dng_auto_ptr.h"
+#include "dng_preview.h"
+#include "dng_string.h"
+#include "dng_date_time.h"
 
 
-// TODO/FIXME: Fuji support is currently broken!
-
-class FujiProcessor : public NegativeProcessor {
-friend class NegativeProcessor;
-
+class RawConverter {
 public:
-   void setDNGPropertiesFromRaw();
-   void buildDNGImage();
+   RawConverter();
+   virtual ~RawConverter();
 
-protected:
-   FujiProcessor(AutoPtr<dng_host> &host, LibRaw *rawProcessor, Exiv2::Image::AutoPtr &rawImage);
+   void openRawFile(const std::string rawFilename);
+   void buildNegative(const std::string dcpFilename);
+   void embedRaw(const std::string rawFilename);
+   void renderImage();
+   dng_preview_list* renderPreviews();
 
-   bool m_fujiRotate90;
+   void writeDng(const std::string dngFilename, const dng_preview_list *previews);
+   void writeTiff(const std::string tiffFilename, const dng_jpeg_preview *thumbnail);
+   void writeJpeg(const std::string jpegFilename);
+
+private:
+   AutoPtr<dng_host> m_host;
+   AutoPtr<NegativeProcessor> m_negProcessor;
+
+   dng_string m_appName, m_appVersion;
+   dng_date_time_info m_dateTimeNow;
 };

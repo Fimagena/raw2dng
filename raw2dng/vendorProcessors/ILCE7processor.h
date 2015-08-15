@@ -30,8 +30,7 @@ public:
    void setXmpFromRaw(const dng_date_time_info &dateTimeNow, const dng_string &appNameVersion);
 
 protected:
-   ILCE7processor(AutoPtr<dng_host> &host, AutoPtr<dng_negative> &negative, 
-                  LibRaw *rawProcessor, Exiv2::Image::AutoPtr &rawImage);
+   ILCE7processor(AutoPtr<dng_host> &host, LibRaw *rawProcessor, Exiv2::Image::AutoPtr &rawImage);
 
    dng_memory_stream* createDNGPrivateTag();
 };

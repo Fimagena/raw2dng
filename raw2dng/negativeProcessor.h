@@ -21,15 +21,16 @@
 #include <dng_host.h>
 #include <dng_negative.h>
 #include <dng_exif.h>
-#include <dng_image.h>
 #include <exiv2/image.hpp>
 
 class LibRaw;
 
 class NegativeProcessor {
 public:
-   static NegativeProcessor* createProcessor(AutoPtr<dng_host> &host, AutoPtr<dng_negative> &negative, const char *filename);
+   static NegativeProcessor* createProcessor(AutoPtr<dng_host> &host, const char *filename);
    virtual ~NegativeProcessor();
+
+   dng_negative* getNegative() {return m_negative.Get();}
 
    // Different raw/DNG processing stages - usually called in this sequence
    virtual void setDNGPropertiesFromRaw();
@@ -37,12 +38,11 @@ public:
    virtual void setExifFromRaw(const dng_date_time_info &dateTimeNow, const dng_string &appNameVersion);
    virtual void setXmpFromRaw(const dng_date_time_info &dateTimeNow, const dng_string &appNameVersion);
    virtual void backupProprietaryData();
-   virtual dng_image* buildDNGImage();
+   virtual void buildDNGImage();
    virtual void embedOriginalRaw(const char *rawFilename);
 
 protected:
-   NegativeProcessor(AutoPtr<dng_host> &host, AutoPtr<dng_negative> &negative, 
-                     LibRaw *rawProcessor, Exiv2::Image::AutoPtr &rawImage);
+   NegativeProcessor(AutoPtr<dng_host> &host, LibRaw *rawProcessor, Exiv2::Image::AutoPtr &rawImage);
 
    virtual dng_memory_stream* createDNGPrivateTag();
 
@@ -69,5 +69,5 @@ protected:
 
    // Target: DNG-file
    AutoPtr<dng_host> &m_host;
-   AutoPtr<dng_negative> &m_negative;
+   AutoPtr<dng_negative> m_negative;
 };
