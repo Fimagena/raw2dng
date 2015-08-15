@@ -5458,6 +5458,10 @@ void dng_image_writer::WriteTIFFWithProfile (dng_host &host,
 	
 	dng_basic_tag_set basic (mainIFD, ifd);
 	
+	// FORK: add orientation - missing for TIFF (but there for DNG). Bug in DNG SDK?
+	tag_uint16 tagOrientation(tcOrientation, metadata->BaseOrientation().GetTIFF());
+    mainIFD.Add(&tagOrientation);
+
 	// Resolution.
 	
 	dng_resolution res;
