@@ -24,14 +24,14 @@
 //#define  LOG(MSG_STRING, ...)  __android_log_print(ANDROID_LOG_ERROR, MSG_STRING, __VA_ARGS__)
 
 extern "C" {
-    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_DngConverter_registerListener(JNIEnv *jEnv, jobject jObject, jstring jCallbackMethodName);
-    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_DngConverter_deRegisterListener(JNIEnv *jEnv, jobject jObject);
+    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_RawConverter_registerListener(JNIEnv *jEnv, jobject jObject, jstring jCallbackMethodName);
+    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_RawConverter_deRegisterListener(JNIEnv *jEnv, jobject jObject);
     void sendJNIProgressUpdate(const char *message);
 
-    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_DngConverter_raw2dng
+    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_RawConverter_raw2dng
         (JNIEnv *jEnv, jobject jObject, jstring jRawFilename, jstring jOutFilename, jstring jDcpFilename, jboolean jEmbedOriginal);
-    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_DngConverter_raw2tiff
+    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_RawConverter_raw2tiff
         (JNIEnv *jEnv, jobject jObject, jstring jRawFilename, jstring jOutFilename, jstring jDcpFilename);
-    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_DngConverter_raw2jpeg
+    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_RawConverter_raw2jpeg
         (JNIEnv *jEnv, jobject jObject, jstring jRawFilename, jstring jOutFilename, jstring jDcpFilename);
 }

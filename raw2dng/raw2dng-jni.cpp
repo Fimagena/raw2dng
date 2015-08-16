@@ -31,7 +31,7 @@ jmethodID m_listenerMethod = NULL;
 void publishProgressUpdate(const char *message) {sendJNIProgressUpdate(message);}
 
 extern "C" {
-    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_DngConverter_registerListener(
+    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_RawConverter_registerListener(
             JNIEnv *jEnv, jobject jObject, jstring jCallbackMethodName) {
         m_listenerObject = jEnv->NewGlobalRef(jObject);
 
@@ -41,7 +41,7 @@ extern "C" {
 
         if (m_listenerMethod == NULL) jEnv->ThrowNew(jEnv->FindClass("java/lang/Exception"), "Could not find callback method signature!");
     }
-    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_DngConverter_deRegisterListener(JNIEnv *jEnv, jobject jObject) {
+    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_RawConverter_deRegisterListener(JNIEnv *jEnv, jobject jObject) {
         m_listenerMethod = NULL;
         jEnv->DeleteGlobalRef(m_listenerObject);
     }
@@ -53,15 +53,15 @@ extern "C" {
 
     void convertFile(int, JNIEnv*, jobject, jstring, jstring, jstring, jboolean = false);
 
-    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_DngConverter_raw2dng
+    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_RawConverter_raw2dng
         (JNIEnv *jEnv, jobject jObject, jstring jRawFilename, jstring jOutFilename, jstring jDcpFilename, jboolean jEmbedOriginal) {
         convertFile(0, jEnv, jObject, jRawFilename, jOutFilename, jDcpFilename, jEmbedOriginal);
     }
-    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_DngConverter_raw2tiff
+    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_RawConverter_raw2tiff
         (JNIEnv *jEnv, jobject jObject, jstring jRawFilename, jstring jOutFilename, jstring jDcpFilename) {
         convertFile(1, jEnv, jObject, jRawFilename, jOutFilename, jDcpFilename);
     }
-    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_DngConverter_raw2jpeg
+    JNIEXPORT void JNICALL Java_com_fimagena_raw2dng_RawConverter_raw2jpeg
         (JNIEnv *jEnv, jobject jObject, jstring jRawFilename, jstring jOutFilename, jstring jDcpFilename) {
         convertFile(2, jEnv, jObject, jRawFilename, jOutFilename, jDcpFilename);
     }
