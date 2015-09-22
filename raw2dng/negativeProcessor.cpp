@@ -21,6 +21,7 @@
 */
 
 #include "negativeProcessor.h"
+#include "vendorProcessors/DNGprocessor.h"
 #include "vendorProcessors/ILCE7Processor.h"
 #include "vendorProcessors/FujiProcessor.h"
 #include "vendorProcessors/variousVendorProcessor.h"
@@ -76,7 +77,14 @@ NegativeProcessor* NegativeProcessor::createProcessor(AutoPtr<dng_host> &host, c
     // -----------------------------------------------------------------------------------------
     // Identify and create correct processor class
 
-    if (!strcmp(rawProcessor->imgdata.idata.model, "ILCE-7"))
+    if (rawProcessor->imgdata.idata.dng_version != 0) {
+        try {return new DNGprocessor(host, rawProcessor.Release(), rawImage);}
+        catch (dng_exception &e) {
+            std::stringstream error; error << "Cannot parse source DNG-file (code " << e.ErrorCode() << ")";
+            throw std::runtime_error(error.str());
+        }
+    }
+    else if (!strcmp(rawProcessor->imgdata.idata.model, "ILCE-7"))
         return new ILCE7processor(host, rawProcessor.Release(), rawImage);
     else if (!strcmp(rawProcessor->imgdata.idata.make, "FUJIFILM"))
         return new FujiProcessor(host, rawProcessor.Release(), rawImage);
@@ -271,7 +279,7 @@ void NegativeProcessor::setCameraProfile(const char *dcpFilename) {
 }
 
 
-void NegativeProcessor::setExifFromRaw(const dng_date_time_info &dateTimeNow, const dng_string &appNameVersion){
+void NegativeProcessor::setExifFromRaw(const dng_date_time_info &dateTimeNow, const dng_string &appNameVersion) {
     dng_exif *negExif = m_negative->GetExif();
 
     // -----------------------------------------------------------------------------------------

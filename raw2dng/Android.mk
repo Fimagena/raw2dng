@@ -9,6 +9,7 @@ LOCAL_CPP_FEATURES += exceptions
 LOCAL_SRC_FILES := raw2dng-jni.cpp \
                    negativeProcessor.cpp \
                    rawConverter.cpp \
+                   vendorProcessors/DNGprocessor.cpp \
                    vendorProcessors/ILCE7processor.cpp \
                    vendorProcessors/FujiProcessor.cpp \
                    vendorProcessors/variousVendorProcessor.cpp
