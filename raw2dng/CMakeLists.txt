@@ -82,8 +82,6 @@ TARGET_LINK_LIBRARIES(raw2dng dng
                               ${LIBRAW_LIBRARIES}
                               ${EXIV2_LIBRARIES})
 
-ADD_EXECUTABLE( test ${CMAKE_CURRENT_SOURCE_DIR}/test.cpp)
-TARGET_LINK_LIBRARIES (test ${EXIV2_LIBRARIES})
 
 # add the install targets
 INSTALL(TARGETS raw2dng DESTINATION bin)
