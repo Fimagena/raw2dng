@@ -22,7 +22,7 @@
 
 #include "negativeProcessor.h"
 #include "vendorProcessors/DNGprocessor.h"
-#include "vendorProcessors/ILCE7Processor.h"
+#include "vendorProcessors/ILCE7processor.h"
 #include "vendorProcessors/FujiProcessor.h"
 #include "vendorProcessors/variousVendorProcessor.h"
 
