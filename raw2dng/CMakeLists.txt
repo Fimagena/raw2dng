@@ -5,7 +5,7 @@ SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 # The version number.
 SET(RAW2DNG_VERSION_MAJOR 1)
 SET(RAW2DNG_VERSION_MINOR 2)
-SET(RAW2DNG_VERSION_PATCH 1)
+SET(RAW2DNG_VERSION_PATCH 2)
 
 # configure a header file to pass some of the CMake settings
 # to the source code
