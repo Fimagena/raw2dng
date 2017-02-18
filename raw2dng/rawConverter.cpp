@@ -39,7 +39,7 @@
 #include "dnghost.h"
 
 
-void publishProgressUpdate(const char *message);
+void publishProgressUpdate(const char *message) {std::cout << " - " << message << "...\n";}
 
 
 RawConverter::RawConverter() {
@@ -158,15 +158,14 @@ dng_preview_list* RawConverter::renderPreviews() {
 }
 
 
-void RawConverter::writeDng(const std::string dngFilename, const dng_preview_list *previews) {
+void RawConverter::writeDng(dng_stream &targetFile, const dng_preview_list *previews) {
     // -----------------------------------------------------------------------------------------
     // Write DNG-image to file
 
     publishProgressUpdate("writing DNG file");
 
     try {
-        dng_file_stream filestream(dngFilename.c_str(), true);
-        dng_image_writer dngWriter; dngWriter.WriteDNG(*m_host, filestream, *m_negProcessor->getNegative(), previews);
+        dng_image_writer dngWriter; dngWriter.WriteDNG(*m_host, targetFile, *m_negProcessor->getNegative(), previews);
     }
     catch (dng_exception& e) {
         std::stringstream error; error << "Error while writing DNG-file! (code: " << e.ErrorCode() << ")";
@@ -175,7 +174,7 @@ void RawConverter::writeDng(const std::string dngFilename, const dng_preview_lis
 }
 
 
-void RawConverter::writeTiff(const std::string tiffFilename, const dng_jpeg_preview *thumbnail) {
+void RawConverter::writeTiff(dng_stream &targetFile, const dng_jpeg_preview *thumbnail) {
     // -----------------------------------------------------------------------------------------
     // Render TIFF
 
@@ -190,9 +189,8 @@ void RawConverter::writeTiff(const std::string tiffFilename, const dng_jpeg_prev
     publishProgressUpdate("writing TIFF file");
 
     try {
-        dng_file_stream filestream(tiffFilename.c_str(), true);
         dng_image_writer tiffWriter; 
-        tiffWriter.WriteTIFF(*m_host, filestream, *negImage.Get(), piRGB, ccUncompressed, 
+        tiffWriter.WriteTIFF(*m_host, targetFile, *negImage.Get(), piRGB, ccUncompressed, 
                              m_negProcessor->getNegative(), &dng_space_sRGB::Get(), NULL, thumbnail);
     }
     catch (dng_exception& e) {
@@ -202,7 +200,7 @@ void RawConverter::writeTiff(const std::string tiffFilename, const dng_jpeg_prev
 }
 
 
-void RawConverter::writeJpeg(const std::string jpegFilename) {
+void RawConverter::writeJpeg(dng_stream &targetFile) {
     // -----------------------------------------------------------------------------------------
     // Render JPEG
 
@@ -273,23 +271,21 @@ void RawConverter::writeJpeg(const std::string jpegFilename) {
         // -----------------------------------------------------------------------------------------
         // Build IFD0, ExifIFD, GPSIFD
 
-        dng_file_stream fileStream(jpegFilename.c_str(), true);
-
         // Write SOI-tag
-        fileStream.Put(soiTag, sizeof(soiTag));
+        targetFile.Put(soiTag, sizeof(soiTag));
 
         // Write APP1-Exif section: Header...
-        fileStream.Put(app1Tag, sizeof(app1Tag));
-        fileStream.SetBigEndian(true);
-        fileStream.Put_uint16(sizeof(uint16) + exifHeaderLength + sizeof(tiffHeader) + mainIfd.Size() + exifSet.Size());
-        fileStream.Put(app1ExifHeader, exifHeaderLength);
+        targetFile.Put(app1Tag, sizeof(app1Tag));
+        targetFile.SetBigEndian(true);
+        targetFile.Put_uint16(sizeof(uint16) + exifHeaderLength + sizeof(tiffHeader) + mainIfd.Size() + exifSet.Size());
+        targetFile.Put(app1ExifHeader, exifHeaderLength);
 
         // ...and TIFF structure
-        fileStream.SetLittleEndian(true);
-        fileStream.Put(tiffHeader, sizeof(tiffHeader));
-        mainIfd.Put(fileStream, dng_tiff_directory::offsetsRelativeToExplicitBase, sizeof(tiffHeader));
-        exifSet.getExifIfd()->Put(fileStream, dng_tiff_directory::offsetsRelativeToExplicitBase, sizeof(tiffHeader) + mainIfd.Size());
-        exifSet.getGpsIfd()->Put(fileStream, dng_tiff_directory::offsetsRelativeToExplicitBase, sizeof(tiffHeader) + mainIfd.Size() + exifSet.getExifIfd()->Size());
+        targetFile.SetLittleEndian(true);
+        targetFile.Put(tiffHeader, sizeof(tiffHeader));
+        mainIfd.Put(targetFile, dng_tiff_directory::offsetsRelativeToExplicitBase, sizeof(tiffHeader));
+        exifSet.getExifIfd()->Put(targetFile, dng_tiff_directory::offsetsRelativeToExplicitBase, sizeof(tiffHeader) + mainIfd.Size());
+        exifSet.getGpsIfd()->Put(targetFile, dng_tiff_directory::offsetsRelativeToExplicitBase, sizeof(tiffHeader) + mainIfd.Size() + exifSet.getExifIfd()->Size());
 
         // Write APP1-XMP if required
         if (metadata->GetXMP()) {
@@ -297,29 +293,29 @@ void RawConverter::writeJpeg(const std::string jpegFilename) {
             dng_string extDigest;
             metadata->GetXMP()->PackageForJPEG(stdBlock, extBlock, extDigest);
 
-            fileStream.Put(app1Tag, sizeof(app1Tag));
-            fileStream.SetBigEndian(true);
-            fileStream.Put_uint16(sizeof(uint16) + xmpHeaderLength + stdBlock->LogicalSize());
-            fileStream.Put(app1XmpHeader, xmpHeaderLength);
-            fileStream.Put(stdBlock->Buffer(), stdBlock->LogicalSize());
+            targetFile.Put(app1Tag, sizeof(app1Tag));
+            targetFile.SetBigEndian(true);
+            targetFile.Put_uint16(sizeof(uint16) + xmpHeaderLength + stdBlock->LogicalSize());
+            targetFile.Put(app1XmpHeader, xmpHeaderLength);
+            targetFile.Put(stdBlock->Buffer(), stdBlock->LogicalSize());
 
             if (extBlock.Get()) {
                 // we only support one extended block, if XMP is >128k the file will probably be corrupted
-                fileStream.Put(app1Tag, sizeof(app1Tag));
-                fileStream.SetBigEndian(true);
-                fileStream.Put_uint16(sizeof(uint16) + extXmpHeaderLength + extDigest.Length() + sizeof(uint32) + sizeof(uint32) + extBlock->LogicalSize());
-                fileStream.Put(app1ExtXmpHeader, extXmpHeaderLength);
-                fileStream.Put(extDigest.Get(), extDigest.Length());
-                fileStream.Put_uint32(extBlock->LogicalSize());
-                fileStream.Put_uint32(stdBlock->LogicalSize());
-                fileStream.Put(extBlock->Buffer(), extBlock->LogicalSize());
+                targetFile.Put(app1Tag, sizeof(app1Tag));
+                targetFile.SetBigEndian(true);
+                targetFile.Put_uint16(sizeof(uint16) + extXmpHeaderLength + extDigest.Length() + sizeof(uint32) + sizeof(uint32) + extBlock->LogicalSize());
+                targetFile.Put(app1ExtXmpHeader, extXmpHeaderLength);
+                targetFile.Put(extDigest.Get(), extDigest.Length());
+                targetFile.Put_uint32(extBlock->LogicalSize());
+                targetFile.Put_uint32(stdBlock->LogicalSize());
+                targetFile.Put(extBlock->Buffer(), extBlock->LogicalSize());
             }
         }
 
         // write remaining JPEG structure/data from libjpeg minus the JFIF-header
-        fileStream.Put((uint8*) jpeg->fCompressedData->Buffer() + jfifHeaderLength, jpeg->fCompressedData->LogicalSize() - jfifHeaderLength);
+        targetFile.Put((uint8*) jpeg->fCompressedData->Buffer() + jfifHeaderLength, jpeg->fCompressedData->LogicalSize() - jfifHeaderLength);
 
-        fileStream.Flush();
+        targetFile.Flush();
     }
     catch (dng_exception& e) {
         std::stringstream error; error << "Error while writing JPEG-file! (code: " << e.ErrorCode() << ")";

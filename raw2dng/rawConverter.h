@@ -39,9 +39,9 @@ public:
    void renderImage();
    dng_preview_list* renderPreviews();
 
-   void writeDng(const std::string dngFilename, const dng_preview_list *previews);
-   void writeTiff(const std::string tiffFilename, const dng_jpeg_preview *thumbnail);
-   void writeJpeg(const std::string jpegFilename);
+   void writeDng(dng_stream &targetFile, const dng_preview_list *previews);
+   void writeTiff(dng_stream &targetFile, const dng_jpeg_preview *thumbnail);
+   void writeJpeg(dng_stream &targetFile);
 
 private:
    AutoPtr<dng_host> m_host;

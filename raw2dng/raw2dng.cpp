@@ -17,17 +17,24 @@
 */
 
 #include <stdexcept>
+#include <memory>
 
+#include "raw2dng.h"
 #include "rawConverter.h"
 
+#include <dng_file_stream.h>
+
+dng_file_stream* openFileStream(std::string &outFilename) {
+    try {return new dng_file_stream(outFilename.c_str(), true);}
+    catch (dng_exception& e) {
+        std::stringstream error; error << "Error! (code: " << e.ErrorCode() << ")";
+        throw std::runtime_error(error.str());
+    }
+}
 
 
-void publishProgressUpdate(const char *message) {std::cout << " - " << message << "...\n";}
-
-
-void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFilename, bool embedOriginal) {
-    std::cout << "Starting DNG conversion: \"" << rawFilename << "\" to \"" << dngFilename << "\"\n";
-    std::time_t startTime = std::time(NULL);
+void raw2dng(std::string rawFilename, std::string outFilename, std::string dcpFilename, bool embedOriginal) {
+    AutoPtr<dng_file_stream> filestream(openFileStream(outFilename));
 
     RawConverter converter;
     converter.openRawFile(rawFilename);
@@ -35,41 +42,32 @@ void raw2dng(std::string rawFilename, std::string dngFilename, std::string dcpFi
     if (embedOriginal) converter.embedRaw(rawFilename);
     converter.renderImage();
     AutoPtr<dng_preview_list> previews(converter.renderPreviews());
-    converter.writeDng(dngFilename, previews.Get());
+    converter.writeDng(*filestream, previews.Get());
     // FIXME: check: are we leaking the previews?
-
-    std::cout << "--> Done (" << std::difftime(std::time(NULL), startTime) << " seconds)\n\n";
 }
 
 
-void raw2tiff(std::string rawFilename, std::string tiffFilename, std::string dcpFilename) {
-    std::cout << "Starting Tiff conversion: \"" << rawFilename << "\" to \"" << tiffFilename << "\"\n";
-    std::time_t startTime = std::time(NULL);
+void raw2tiff(std::string rawFilename, std::string outFilename, std::string dcpFilename) {
+    AutoPtr<dng_file_stream> filestream(openFileStream(outFilename));
 
     RawConverter converter;
     converter.openRawFile(rawFilename);
     converter.buildNegative(dcpFilename);
     converter.renderImage();
     AutoPtr<dng_preview_list> previews(converter.renderPreviews());
-    converter.writeTiff(tiffFilename, dynamic_cast<const dng_jpeg_preview*>(&previews->Preview(1)));
+    converter.writeTiff(*filestream, dynamic_cast<const dng_jpeg_preview*>(&previews->Preview(1)));
     // FIXME: check: are we leaking the previews?
-
-    std::cout << "--> Done (" << std::difftime(std::time(NULL), startTime) << " seconds)\n\n";
 }
 
 
-void raw2jpeg(std::string rawFilename, std::string jpegFilename, std::string dcpFilename) {
-    std::cout << "Starting JPEG conversion: \"" << rawFilename << "\" to \"" << jpegFilename << "\"\n";
-    std::time_t startTime = std::time(NULL);
+void raw2jpeg(std::string rawFilename, std::string outFilename, std::string dcpFilename) {
+    AutoPtr<dng_file_stream> filestream(openFileStream(outFilename));
 
     RawConverter converter;
     converter.openRawFile(rawFilename);
     converter.buildNegative(dcpFilename);
     converter.renderImage();
-    converter.writeJpeg(jpegFilename);
-
-    std::cout << "--> Done (" << std::difftime(std::time(NULL), startTime) << " seconds)\n\n";
-
+    converter.writeJpeg(*filestream);
 }
 
 
@@ -111,7 +109,7 @@ int main(int argc, const char* argv []) {
 
     std::string rawFilename(argv[index++]);
 
-    // set output filename: if not given in command line, replace raw file extension with .dng
+    // set output filename: if not given in command line, replace raw file extension
     if (outFilename.empty()) {
         outFilename.assign(rawFilename, 0, rawFilename.find_last_of("."));
         if (isJpeg)      outFilename.append(".jpg");
@@ -122,6 +120,9 @@ int main(int argc, const char* argv []) {
     // -----------------------------------------------------------------------------------------
     // Call the conversion function
 
+    std::cout << "Starting conversion: \"" << rawFilename << "\n";
+    std::time_t startTime = std::time(NULL);
+
     try {
         if (isJpeg)      raw2jpeg(rawFilename, outFilename, dcpFilename);
         else if (isTiff) raw2tiff(rawFilename, outFilename, dcpFilename);
@@ -131,6 +132,8 @@ int main(int argc, const char* argv []) {
         std::cerr << "--> Error! (" << e.what() << ")\n\n";
         return -1;
     }
+
+    std::cout << "--> Done (" << std::difftime(std::time(NULL), startTime) << " seconds)\n\n";
 
     return 0;
 }
