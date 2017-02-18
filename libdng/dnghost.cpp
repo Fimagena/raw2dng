@@ -26,10 +26,11 @@
 #include "dng_area_task.h"
 #include "dng_rect.h"
 
+#ifndef kLocalUseThreads
+#define kLocalUseThreads 1
+#endif
 
-#define kLocalUseThreads
-
-#if defined(kLocalUseThreads)
+#if kLocalUseThreads
 #if qWinOS
 #include <windows.h>
 #include <process.h>
@@ -43,7 +44,7 @@ enum threadVals
     kMaxLocalThreads = 16,
 };
 
-#if defined(kLocalUseThreads)
+#if kLocalUseThreads
 //////////////////////////////////////////////////////////////
 //
 // cppThread class
@@ -200,7 +201,7 @@ void DngHost::PerformAreaTask(dng_area_task &task,
 {
     dng_point tileSize (task.FindTileSize (area));
 
-#if defined(kLocalUseThreads)
+#if kLocalUseThreads
     // Now we need to do some resource allocation
     // We start by assuming one tile per thread, and work our way up
     // Note that a thread pool is technically a better idea, but very complex
