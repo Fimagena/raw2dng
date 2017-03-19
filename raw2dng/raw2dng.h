@@ -19,7 +19,10 @@
 #pragma once
 
 #include <string>
+#include <functional>
 
 void raw2dng(std::string rawFilename, std::string outFilename, std::string dcpFilename, bool embedOriginal);
 void raw2tiff(std::string rawFilename, std::string outFilename, std::string dcpFilename);
 void raw2jpeg(std::string rawFilename, std::string outFilename, std::string dcpFilename);
+
+void registerPublisher(std::function<void(const char*)> function);

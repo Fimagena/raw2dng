@@ -17,57 +17,44 @@
 */
 
 #include <stdexcept>
-#include <memory>
 
 #include "raw2dng.h"
 #include "rawConverter.h"
 
-#include <dng_file_stream.h>
 
-dng_file_stream* openFileStream(std::string &outFilename) {
-    try {return new dng_file_stream(outFilename.c_str(), true);}
-    catch (dng_exception& e) {
-        std::stringstream error; error << "Error! (code: " << e.ErrorCode() << ")";
-        throw std::runtime_error(error.str());
-    }
-}
+void publishProgressUpdate(const char *message) {std::cout << " - " << message << "...\n";}
+
+
+void registerPublisher(std::function<void(const char*)> function) {RawConverter::registerPublisher(function);}
 
 
 void raw2dng(std::string rawFilename, std::string outFilename, std::string dcpFilename, bool embedOriginal) {
-    AutoPtr<dng_file_stream> filestream(openFileStream(outFilename));
-
     RawConverter converter;
     converter.openRawFile(rawFilename);
     converter.buildNegative(dcpFilename);
     if (embedOriginal) converter.embedRaw(rawFilename);
     converter.renderImage();
-    AutoPtr<dng_preview_list> previews(converter.renderPreviews());
-    converter.writeDng(*filestream, previews.Get());
-    // FIXME: check: are we leaking the previews?
+    converter.renderPreviews();
+    converter.writeDng(outFilename);
 }
 
 
 void raw2tiff(std::string rawFilename, std::string outFilename, std::string dcpFilename) {
-    AutoPtr<dng_file_stream> filestream(openFileStream(outFilename));
-
     RawConverter converter;
     converter.openRawFile(rawFilename);
     converter.buildNegative(dcpFilename);
     converter.renderImage();
-    AutoPtr<dng_preview_list> previews(converter.renderPreviews());
-    converter.writeTiff(*filestream, dynamic_cast<const dng_jpeg_preview*>(&previews->Preview(1)));
-    // FIXME: check: are we leaking the previews?
+    converter.renderPreviews();
+    converter.writeTiff(outFilename);
 }
 
 
 void raw2jpeg(std::string rawFilename, std::string outFilename, std::string dcpFilename) {
-    AutoPtr<dng_file_stream> filestream(openFileStream(outFilename));
-
     RawConverter converter;
     converter.openRawFile(rawFilename);
     converter.buildNegative(dcpFilename);
     converter.renderImage();
-    converter.writeJpeg(*filestream);
+    converter.writeJpeg(outFilename);
 }
 
 
@@ -122,6 +109,8 @@ int main(int argc, const char* argv []) {
 
     std::cout << "Starting conversion: \"" << rawFilename << "\n";
     std::time_t startTime = std::time(NULL);
+
+    RawConverter::registerPublisher(publishProgressUpdate);
 
     try {
         if (isJpeg)      raw2jpeg(rawFilename, outFilename, dcpFilename);

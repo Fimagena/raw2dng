@@ -1,4 +1,4 @@
-/* Copyright (C) 2015 Fimagena
+/* Copyright (C) 2015-2017 Fimagena
 
    This library is free software; you can redistribute it and/or
    modify it under the terms of the GNU Library General Public
@@ -14,6 +14,10 @@
    along with this library; see the file COPYING.  If not, write to
    the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
    Boston, MA 02110-1301, USA.
+
+   This file uses code from dngconvert from Jens Mueller and others
+   (https://github.com/jmue/dngconvert) - Copyright (C) 2011 Jens 
+   Mueller (tschensinger at gmx dot de)
 */
 
 #include <dng_simple_image.h>

@@ -37,16 +37,21 @@ public:
    void buildNegative(const std::string dcpFilename);
    void embedRaw(const std::string rawFilename);
    void renderImage();
-   dng_preview_list* renderPreviews();
+   void renderPreviews();
 
-   void writeDng(dng_stream &targetFile, const dng_preview_list *previews);
-   void writeTiff(dng_stream &targetFile, const dng_jpeg_preview *thumbnail);
-   void writeJpeg(dng_stream &targetFile);
+   void writeDng (const std::string outFilename);
+   void writeTiff(const std::string outFilename);
+   void writeJpeg(const std::string outFilename);
+
+   static void registerPublisher(std::function<void(const char*)> function);
 
 private:
    AutoPtr<dng_host> m_host;
    AutoPtr<NegativeProcessor> m_negProcessor;
+   AutoPtr<dng_preview_list> m_previewList;
 
    dng_string m_appName, m_appVersion;
    dng_date_time_info m_dateTimeNow;
+
+   static std::function<void(const char*)> m_publishFunction;
 };
