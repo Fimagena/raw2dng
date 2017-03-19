@@ -53,7 +53,7 @@ public:
     size_t stackSize() { return 0; } // 0 gives the default size for the platform; override if we know something better
 
     void run() { fTask.ProcessOnThread(fThreadIndex, fThreadArea, fTileSize, fSniffer); }
-    int start() { return pthread_create(&thread, &threadAttr, cppThread::thread_func, (void*)this); }
+    int start() { return pthread_create(&thread, &threadAttr, thread_func, (void*)this); }
     int wait()  { return pthread_join(thread, NULL); }
 
 private:
@@ -95,7 +95,7 @@ void DngHost::PerformAreaTask(dng_area_task &task, const dng_rect &area) {
            Min_int32(task.MaxThreads (), kMaxLocalThreads)) {
         // Here we want to increase the number of tiles per thread
         // So do we do that in the V or H dimension?
-        if ((vTilesinArea / vTilesPerThread) > (hTilesinArea / hTilesPerThread) {
+        if ((vTilesinArea / vTilesPerThread) > (hTilesinArea / hTilesPerThread)) {
             vTilesPerThread++;
             tileHeight += tileSize.v;
         }
