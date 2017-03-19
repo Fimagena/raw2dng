@@ -40,6 +40,26 @@
 #include <exiv2/xmp.hpp>
 #include <libraw/libraw.h>
 
+const char* getDngErrorMessage(int errorCode) {
+    switch (errorCode) {
+        default:
+        case 100000: return "Unknown error";
+        case 100003: return "Processing stopped by user (or host application) request";
+        case 100004: return "Necessary host functionality is not present";
+        case 100005: return "Out of memory";
+        case 100006: return "File format is not valid";
+        case 100007: return "Matrix has wrong shape, is badly conditioned, or similar problem";
+        case 100008: return "Could not open file";
+        case 100009: return "Error reading file";
+        case 100010: return "Error writing file";
+        case 100011: return "Unexpected end of file";
+        case 100012: return "File is damaged in some way";
+        case 100013: return "Image is too big to save as DNG";
+        case 100014: return "Image is too big to save as TIFF";
+        case 100015: return "DNG version is unsupported";
+    }
+}
+
 
 NegativeProcessor* NegativeProcessor::createProcessor(AutoPtr<dng_host> &host, const char *filename) {
     // -----------------------------------------------------------------------------------------
@@ -80,7 +100,7 @@ NegativeProcessor* NegativeProcessor::createProcessor(AutoPtr<dng_host> &host, c
     if (rawProcessor->imgdata.idata.dng_version != 0) {
         try {return new DNGprocessor(host, rawProcessor.Release(), rawImage);}
         catch (dng_exception &e) {
-            std::stringstream error; error << "Cannot parse source DNG-file (code " << e.ErrorCode() << ")";
+            std::stringstream error; error << "Cannot parse source DNG-file (" << e.ErrorCode() << ": " << getDngErrorMessage(e.ErrorCode()) << ")";
             throw std::runtime_error(error.str());
         }
     }

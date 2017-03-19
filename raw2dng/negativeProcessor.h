@@ -25,6 +25,8 @@
 
 class LibRaw;
 
+const char* getDngErrorMessage(int errorCode);
+
 class NegativeProcessor {
 public:
    static NegativeProcessor* createProcessor(AutoPtr<dng_host> &host, const char *filename);
