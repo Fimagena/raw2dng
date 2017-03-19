@@ -21,11 +21,10 @@
 
 #include "dng_host.h"
 
-class DngHost : public dng_host
-{
+class DngHost : public dng_host {
 public:
-    DngHost(dng_memory_allocator *allocator = NULL, dng_abort_sniffer *sniffer = NULL);
-    ~DngHost(void);
+    DngHost(dng_memory_allocator *allocator = NULL, dng_abort_sniffer *sniffer = NULL) {}
+    ~DngHost(void) {}
 
 public:
     virtual void PerformAreaTask(dng_area_task &task, const dng_rect &area);
