@@ -40,6 +40,6 @@ ADD_EXECUTABLE( raw2dng
                 ${CMAKE_CURRENT_SOURCE_DIR}/vendorProcessors/variousVendorProcessor.cpp )
 
 TARGET_LINK_LIBRARIES( raw2dng dng ${ZLIB_LIBRARIES} ${LIBRAW_LIBRARIES} ${EXIV2_LIBRARIES} )
-TARGET_COMPILE_OPTIONS( raw2dng PRIVATE -fexceptions )
+TARGET_COMPILE_OPTIONS( raw2dng PRIVATE -fexceptions -std=c++11 )
 
 INSTALL(TARGETS raw2dng DESTINATION bin)

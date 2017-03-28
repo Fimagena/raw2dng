@@ -30,121 +30,69 @@
 #define kLocalUseThreads 1
 #endif
 
-#if kLocalUseThreads
-#include <pthread.h>
+#if !kLocalUseThreads
 
-enum threadVals { kMaxLocalThreads = 16 };
+void DngHost::PerformAreaTask(dng_area_task &task, const dng_rect &area) { 
+   dng_area_task::Perform(task, area, &Allocator (), Sniffer ());
+}
 
-// areaThread uses pthread to execute a single area task
-class areaThread {
-    static void* thread_func(void *d) { ((areaThread*)d)->run(); return NULL; }
+#else 
 
-public:
-    areaThread(dng_area_task &task, uint32 threadIndex, const dng_rect &threadArea, const dng_point &tileSize, dng_abort_sniffer *sniffer) :
-    	fTask(task), fThreadIndex(threadIndex), fThreadArea(threadArea), fTileSize(tileSize), fSniffer(sniffer) {
-        // Make very sure the thread is joinable. This is the default on most systems, but you never know
-        // Initialize and set thread joinable attribute
-        pthread_attr_init(&threadAttr);
-        pthread_attr_setdetachstate(&threadAttr, PTHREAD_CREATE_JOINABLE);
-        if (stackSize() != 0) pthread_attr_setstacksize(&threadAttr, stackSize());
-    }
-    ~areaThread() { pthread_attr_destroy(&threadAttr); }
+#include <thread>
+#include <vector>
+#include <exception>
+#include "dng_sdk_limits.h"
 
-    size_t stackSize() { return 0; } // 0 gives the default size for the platform; override if we know something better
+static std::exception_ptr threadException = nullptr;
 
-    void run() { fTask.ProcessOnThread(fThreadIndex, fThreadArea, fTileSize, fSniffer); }
-    int start() { return pthread_create(&thread, &threadAttr, thread_func, (void*)this); }
-    int wait()  { return pthread_join(thread, NULL); }
+static void executeAreaThread(std::reference_wrapper<dng_area_task> task, uint32 threadIndex, const dng_rect &threadArea, const dng_point &tileSize, dng_abort_sniffer *sniffer) {
+   try { task.get().ProcessOnThread(threadIndex, threadArea, tileSize, sniffer); }
+   catch (...) { threadException = std::current_exception(); }
+}
 
-private:
-    pthread_attr_t threadAttr;
-    pthread_t thread;
-
-    dng_area_task &fTask;
-    uint32 fThreadIndex;
-    dng_rect fThreadArea;
-    dng_point fTileSize;
-    dng_abort_sniffer *fSniffer;
-};
-
-#endif
 
 void DngHost::PerformAreaTask(dng_area_task &task, const dng_rect &area) {
-#if kLocalUseThreads
-
-    dng_point tileSize(task.FindTileSize (area));
+    dng_point tileSize(task.FindTileSize(area));
 
     // Now we need to do some resource allocation
     // We start by assuming one tile per thread, and work our way up
-    // Note that a thread pool is technically a better idea, but very complex
-    // in a Mac/Windows environment; this is the cheap and cheerful solution
-    int vTilesPerThread = 1;
-    int hTilesPerThread = 1;
+    uint32 vTilesinArea = area.H() / tileSize.v; if ((area.H() - (vTilesinArea * tileSize.v)) > 0) vTilesinArea++;
+    uint32 hTilesinArea = area.W() / tileSize.h; if ((area.W() - (hTilesinArea * tileSize.h)) > 0) hTilesinArea++;
 
-    int vTilesinArea = area.H() / tileSize.v;
-    vTilesinArea = ((vTilesinArea * ((int) tileSize.v)) < ((int) area.H())) ? vTilesinArea + 1 : vTilesinArea;
-
-    int hTilesinArea = area.W() / tileSize.h;
-    hTilesinArea = ((hTilesinArea * ((int) tileSize.h)) < ((int) area.W())) ? hTilesinArea + 1 : hTilesinArea;
-
-    int32 tileWidth  = tileSize.h;
-    int32 tileHeight = tileSize.v;
-
+    int vTilesPerThread = 1, hTilesPerThread = 1;
     // Ensure we don't exceed maxThreads for this task
-    while (((vTilesinArea + vTilesPerThread - 1) / vTilesPerThread) * ((hTilesinArea + hTilesPerThread - 1) / hTilesPerThread) > 
-           Min_int32(task.MaxThreads (), kMaxLocalThreads)) {
-        // Here we want to increase the number of tiles per thread
-        // So do we do that in the V or H dimension?
-        if ((vTilesinArea / vTilesPerThread) > (hTilesinArea / hTilesPerThread)) {
-            vTilesPerThread++;
-            tileHeight += tileSize.v;
-        }
-        else {
-            hTilesPerThread++;
-            tileWidth += tileSize.h;
-        }
+    while (((vTilesinArea + vTilesPerThread - 1) / vTilesPerThread) * ((hTilesinArea + hTilesPerThread - 1) / hTilesPerThread) > kMaxMPThreads) {
+        // Here we want to increase the number of tiles per thread; so do we do that in the V or H dimension?
+        if ((vTilesinArea / vTilesPerThread) > (hTilesinArea / hTilesPerThread)) vTilesPerThread++;
+        else hTilesPerThread++;
     }
 
-    areaThread *localThreads[kMaxLocalThreads];
+    task.Start(Min_uint32(task.MaxThreads (), kMaxMPThreads), tileSize, &Allocator (), Sniffer ());
 
-    task.Start(Min_uint32(task.MaxThreads (), kMaxLocalThreads), tileSize, &Allocator (), Sniffer ());
+    std::vector<std::thread> areaThreads;
+    threadException = nullptr;
 
-    int threadIndex = 0;
-    dng_rect threadArea(area.t, area.l, area.t + tileHeight, area.l + tileWidth);
+    dng_rect threadArea(area.t, area.l, area.t + (vTilesPerThread * tileSize.v), area.l + (hTilesPerThread * tileSize.h));
+    for (uint32 vIndex = 0; vIndex < vTilesinArea; vIndex += vTilesPerThread) {
 
-    for (int vIndex = 0; vIndex < vTilesinArea; vIndex += vTilesPerThread) {
-        threadArea.l = area.l;
-        threadArea.r = area.l + tileWidth;
-
-        for (int hIndex = 0; hIndex < hTilesinArea; hIndex += hTilesPerThread) {
-            localThreads[threadIndex] = new areaThread(task, threadIndex, threadArea, tileSize, Sniffer ());
-            if (localThreads[threadIndex] != NULL)
-                if (localThreads[threadIndex]->start() != 0) {
-                    delete localThreads[threadIndex];
-                    localThreads[threadIndex] = NULL;
-                }
-
-            // If something goes bad, do this non-threaded
-            if (localThreads[threadIndex] == NULL) task.ProcessOnThread(threadIndex, threadArea, tileSize, Sniffer ());
-
-            threadIndex++;
+        for (uint32 hIndex = 0; hIndex < hTilesinArea; hIndex += hTilesPerThread) {
+            try { areaThreads.push_back(std::thread(executeAreaThread, std::ref(task), areaThreads.size(), threadArea, tileSize, Sniffer ())); }
+            catch (...) { executeAreaThread(task, areaThreads.size(), threadArea, tileSize, Sniffer ()); }
 
             threadArea.l = threadArea.r;
-            threadArea.r = Min_int32(threadArea.r + tileWidth, area.r);
+            threadArea.r = Min_int32(threadArea.r + (hTilesPerThread * tileSize.h), area.r);
         }
-        threadArea.t = threadArea.b;
-        threadArea.b = Min_int32(threadArea.b + tileHeight, area.b);
-    }
-    for (int i = 0; i < threadIndex; i++) {
-        if (localThreads[i] != NULL) {
-            // There's nothing we can do if join fails; just hope for the best(!)
-            localThreads[i]->wait();
-            delete localThreads[i];
-        }
-    }
-    task.Finish(Min_uint32(task.MaxThreads(), kMaxLocalThreads));
 
-#else // kLocalUseThreads
-    dng_area_task::Perform(task, area, &Allocator (), Sniffer ());
-#endif
+        threadArea.t = threadArea.b;
+        threadArea.l = area.l;
+        threadArea.b = Min_int32(threadArea.b + (vTilesPerThread * tileSize.v), area.b);
+        threadArea.r = area.l + (hTilesPerThread * tileSize.h);
+    }
+
+   for (auto& areaThread : areaThreads) areaThread.join();
+   if (threadException) std::rethrow_exception(threadException);
+
+   task.Finish(Min_uint32(task.MaxThreads(), kMaxMPThreads));
 }
+
+#endif
