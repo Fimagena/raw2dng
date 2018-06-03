@@ -28,7 +28,7 @@ ADD_DEFINITIONS( ${ZLIB_DEFINITIONS} )
 
 INCLUDE_DIRECTORIES( ${raw2dng_SOURCE_DIR}/libdng 
                      ${raw2dng_SOURCE_DIR}/libdng/dng-sdk/source 
-                     ${PROJECT_BINARY_DIR} )
+                     ${CMAKE_CURRENT_BINARY_DIR} )
 
 ADD_EXECUTABLE( raw2dng
                 ${CMAKE_CURRENT_SOURCE_DIR}/raw2dng.cpp
