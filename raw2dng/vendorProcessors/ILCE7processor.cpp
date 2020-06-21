@@ -27,6 +27,7 @@
 #include <dng_camera_profile.h>
 
 #include <libraw/libraw.h>
+#include <exiv2/error.hpp>
 #include <exiv2/tiffimage.hpp>
 
 static unsigned int ISOlist[28] = {50, 64, 80, 100, 125, 160, 200, 

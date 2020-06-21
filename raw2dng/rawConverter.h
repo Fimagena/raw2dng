@@ -20,6 +20,7 @@
 
 #include "negativeProcessor.h"
 
+#include <functional>
 #include <string>
 
 #include "dng_auto_ptr.h"

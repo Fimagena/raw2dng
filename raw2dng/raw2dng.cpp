@@ -17,6 +17,7 @@
 */
 
 #include <stdexcept>
+#include <iostream>
 
 #include "raw2dng.h"
 #include "rawConverter.h"

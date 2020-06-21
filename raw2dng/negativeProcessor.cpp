@@ -27,6 +27,7 @@
 #include "vendorProcessors/variousVendorProcessor.h"
 
 #include <stdexcept>
+#include <iostream>
 
 #include <dng_simple_image.h>
 #include <dng_camera_profile.h>
@@ -36,6 +37,7 @@
 
 #include <zlib.h>
 
+#include <exiv2/error.hpp>
 #include <exiv2/image.hpp>
 #include <exiv2/xmp_exiv2.hpp>
 #include <libraw/libraw.h>
