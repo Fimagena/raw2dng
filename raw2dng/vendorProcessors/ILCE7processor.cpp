@@ -148,7 +148,7 @@ static CalibrationMatrix CalibrationLenses[2] = {
 
 class ILCE7_noise_profile : public dng_noise_profile {
 public:
-    ILCE7_noise_profile(unsigned int iso) : dng_noise_profile(std::vector<dng_noise_function>(3)) {
+    ILCE7_noise_profile(unsigned int iso) : dng_noise_profile(dng_std_vector<dng_noise_function>(3)) {
         for (int i = 0; i < 28; i++)
             if (ISOlist[i] == iso) {
                 for (int j = 0; j < 3; j++) {
@@ -161,7 +161,7 @@ public:
 };
 
 
-ILCE7processor::ILCE7processor(AutoPtr<dng_host> &host, LibRaw *rawProcessor, Exiv2::Image::AutoPtr &rawImage)
+ILCE7processor::ILCE7processor(AutoPtr<dng_host> &host, LibRaw *rawProcessor, Exiv2::Image::UniquePtr &rawImage)
                              : NegativeProcessor(host, rawProcessor, rawImage) {}
 
 
