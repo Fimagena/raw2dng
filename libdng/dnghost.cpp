@@ -38,15 +38,16 @@ void DngHost::PerformAreaTask(dng_area_task &task, const dng_rect &area) {
 
 #else 
 
-#include <thread>
+#include <thread> //mingw.thread.h for WIN
+#include <functional> //mingw.invoke.h for WIN
 #include <vector>
 #include <exception>
 #include "dng_sdk_limits.h"
 
 static std::exception_ptr threadException = nullptr;
 
-static void executeAreaThread(std::reference_wrapper<dng_area_task> task, uint32 threadIndex, const dng_rect &threadArea, const dng_point &tileSize, dng_abort_sniffer *sniffer) {
-   try { task.get().ProcessOnThread(threadIndex, threadArea, tileSize, sniffer); }
+static void executeAreaThread(std::reference_wrapper<dng_area_task> task, uint32 threadIndex, const dng_rect &threadArea, const dng_point &tileSize, dng_abort_sniffer *sniffer, dng_area_task_progress *progress) {
+   try { task.get().ProcessOnThread(threadIndex, threadArea, tileSize, sniffer, progress); }
    catch (...) { threadException = std::current_exception(); }
 }
 
@@ -67,7 +68,7 @@ void DngHost::PerformAreaTask(dng_area_task &task, const dng_rect &area) {
         else hTilesPerThread++;
     }
 
-    task.Start(Min_uint32(task.MaxThreads (), kMaxMPThreads), tileSize, &Allocator (), Sniffer ());
+    task.Start(Min_uint32(task.MaxThreads (), kMaxMPThreads), area, tileSize, &Allocator (), Sniffer ());
 
     std::vector<std::thread> areaThreads;
     threadException = nullptr;
@@ -77,7 +78,7 @@ void DngHost::PerformAreaTask(dng_area_task &task, const dng_rect &area) {
 
         for (uint32 hIndex = 0; hIndex < hTilesinArea; hIndex += hTilesPerThread) {
             try { areaThreads.push_back(std::thread(executeAreaThread, std::ref(task), areaThreads.size(), threadArea, tileSize, Sniffer ())); }
-            catch (...) { executeAreaThread(task, areaThreads.size(), threadArea, tileSize, Sniffer ()); }
+            catch (...) { executeAreaThread(task, areaThreads.size(), threadArea, tileSize, Sniffer (), nullptr); }
 
             threadArea.l = threadArea.r;
             threadArea.r = Min_int32(threadArea.r + (hTilesPerThread * tileSize.h), area.r);
