@@ -86,7 +86,7 @@ NegativeProcessor* NegativeProcessor::createProcessor(AutoPtr<dng_host> &host, c
     // -----------------------------------------------------------------------------------------
     // ...and libexiv2
 
-    Exiv2::Image::AutoPtr rawImage;
+    Exiv2::Image::UniquePtr rawImage;
     try {
         rawImage = Exiv2::ImageFactory::open(filename);
         rawImage->readMetadata();
@@ -115,7 +115,7 @@ NegativeProcessor* NegativeProcessor::createProcessor(AutoPtr<dng_host> &host, c
 }
 
 
-NegativeProcessor::NegativeProcessor(AutoPtr<dng_host> &host, LibRaw *rawProcessor, Exiv2::Image::AutoPtr &rawImage)
+NegativeProcessor::NegativeProcessor(AutoPtr<dng_host> &host, LibRaw *rawProcessor, Exiv2::Image::UniquePtr &rawImage)
                                    : m_RawProcessor(rawProcessor), m_RawImage(rawImage),
                                      m_RawExif(m_RawImage->exifData()), m_RawXmp(m_RawImage->xmpData()),
                                      m_host(host) {
