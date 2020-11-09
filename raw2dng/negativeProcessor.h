@@ -44,7 +44,7 @@ public:
    virtual void embedOriginalRaw(const char *rawFilename);
 
 protected:
-   NegativeProcessor(AutoPtr<dng_host> &host, LibRaw *rawProcessor, Exiv2::Image::AutoPtr &rawImage);
+   NegativeProcessor(AutoPtr<dng_host> &host, LibRaw *rawProcessor, Exiv2::Image::UniquePtr &rawImage);
 
    virtual dng_memory_stream* createDNGPrivateTag();
 
@@ -65,7 +65,7 @@ protected:
 
    // Source: Raw-file
    AutoPtr<LibRaw> m_RawProcessor;
-   Exiv2::Image::AutoPtr m_RawImage;
+   Exiv2::Image::UniquePtr m_RawImage;
    Exiv2::ExifData m_RawExif;
    Exiv2::XmpData m_RawXmp;
 
