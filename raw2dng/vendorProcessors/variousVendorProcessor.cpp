@@ -29,7 +29,7 @@
 #include "variousVendorProcessor.h"
 
 
-VariousVendorProcessor::VariousVendorProcessor(AutoPtr<dng_host> &host, LibRaw *rawProcessor, Exiv2::Image::AutoPtr &rawImage)
+VariousVendorProcessor::VariousVendorProcessor(AutoPtr<dng_host> &host, LibRaw *rawProcessor, Exiv2::Image::UniquePtr &rawImage)
                                              : NegativeProcessor(host, rawProcessor, rawImage) {}
 
 
