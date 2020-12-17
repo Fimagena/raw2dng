@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_string.h#2 $ */ 
-/* $DateTime: 2012/07/31 22:04:34 $ */
-/* $Change: 840853 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Text string representation.
@@ -125,6 +120,9 @@ class dng_string
 					  const char *new_string,
 					  bool case_sensitive = true);
 		
+        void ReplaceChars (char oldChar,
+                           char newChar);
+		
 		bool TrimLeading (const char *s,
 						  bool case_sensitive = false);
 						  
@@ -133,7 +131,7 @@ class dng_string
 		void SetUppercase ();
 		
 		void SetLowercase ();
-		
+        
 		void SetLineEndings (char ending);
 		
 		void SetLineEndingsToNewLines ()
@@ -150,7 +148,8 @@ class dng_string
 		
 		void ForceASCII ();
 		
-		int32 Compare (const dng_string &s) const;
+		int32 Compare (const dng_string &s,
+                       bool digitsAsNumber = true) const;
 
 		// A utility to convert fields of numbers into comma separated numbers.
 

@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2012 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_host.cpp#2 $ */ 
-/* $DateTime: 2012/06/14 20:24:41 $ */
-/* $Change: 835078 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_host.h"
@@ -49,6 +42,9 @@ dng_host::dng_host (dng_memory_allocator *allocator,
 	,	fSaveDNGVersion		(dngVersion_None)
 	,	fSaveLinearDNG		(false)
 	,	fKeepOriginalFile	(false)
+	,	fForFastSaveToDNG	(false)
+	,	fFastSaveToDNGSize	(0)
+	,	fPreserveStage2		(false)
 	
 	{
 	
@@ -174,6 +170,56 @@ void dng_host::ValidateSizes ()
 			SetMinimumSize (1960);
 			}
 
+		else if (PreferredSize () >= 2400 && PreferredSize () <= 2560)
+			{
+			SetMinimumSize (2400);
+			}
+
+		// The following resolutions are typically on HiDPI displays where a
+		// greater degree of upsampling remains visually ok for previews. The
+		// following ratios are all based on 20% upsampling in a linear
+		// dimension.
+
+		else if (PreferredSize () >= 2448 && PreferredSize () <= 2880)
+			{
+			SetMinimumSize (2448);
+			}
+
+		// 1st-generation Surface Book.
+
+		else if (PreferredSize () >= 2560 && PreferredSize () <= 3000)
+			{
+			SetMinimumSize (2560);
+			}
+
+		// 4K (actually 3840).
+
+		else if (PreferredSize () >= 3480 && PreferredSize () <= 4096)
+			{
+			SetMinimumSize (3480);
+			}
+
+		// Surface Studio.
+
+		else if (PreferredSize () >= 3824 && PreferredSize () <= 4500)
+			{
+			SetMinimumSize (3824);
+			}
+
+		// 5K.
+
+		else if (PreferredSize () >= 4352 && PreferredSize () <= 5120)
+			{
+			SetMinimumSize (4352);
+			}
+
+		// 8K.
+
+		else if (PreferredSize () >= 6528 && PreferredSize () <= 7680)
+			{
+			SetMinimumSize (6528);
+			}
+
 		// Else minimum size is same as preferred size.
 			
 		else
@@ -229,13 +275,15 @@ bool dng_host::IsTransientError (dng_error_code code)
 /*****************************************************************************/
 
 void dng_host::PerformAreaTask (dng_area_task &task,
-								const dng_rect &area)
+								const dng_rect &area,
+                                dng_area_task_progress *progress)
 	{
 	
 	dng_area_task::Perform (task,
 							area,
 							&Allocator (),
-							Sniffer ());
+							Sniffer (),
+                            progress);
 	
 	}
 		

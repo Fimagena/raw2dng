@@ -1,21 +1,15 @@
 /*****************************************************************************/
-// Copyright 2006-2008 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
 
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_date_time.cpp#2 $ */ 
-/* $DateTime: 2012/06/01 07:28:57 $ */
-/* $Change: 832715 $ */
-/* $Author: tknoll $ */
-
-/*****************************************************************************/
-
 #include "dng_date_time.h"
 
 #include "dng_exceptions.h"
+#include "dng_globals.h"
 #include "dng_mutex.h"
 #include "dng_stream.h"
 #include "dng_string.h"
@@ -30,13 +24,6 @@
 #if qWinOS
 #include <windows.h>
 #endif
-
-/******************************************************************************/
-
-// MWG says don't use fake time zones in XMP, but there is some
-// old software that requires them to work correctly.
-
-bool gDNGUseFakeTimeZonesInXMP = false;
 
 /******************************************************************************/
 
@@ -230,7 +217,101 @@ void dng_date_time_info::SetTime (uint32 hour,
 	fDateTime.fSecond = second;
 	
 	}
-	
+
+/*****************************************************************************/
+
+void dng_date_time_info::SetOffsetTime (const dng_string &s)
+    {
+    
+    // Initialize zone to invalid.
+    
+    dng_time_zone zone;
+    
+    SetZone (zone);
+    
+    // Parse EXIF OffsetTime format.
+    
+    if (s.Length () == 6 &&
+            (s.Get () [0] == '+' || s.Get () [0] == '-') &&
+            (s.Get () [1] >= '0' && s.Get () [1] <= '1') &&
+            (s.Get () [2] >= '0' && s.Get () [2] <= '9') &&
+            (s.Get () [3] == ':') &&
+            (s.Get () [4] >= '0' && s.Get () [4] <= '5') &&
+            (s.Get () [5] >= '0' && s.Get () [5] <= '9'))
+        {
+        
+        int32 hours = (s.Get () [1] - '0') * 10 +
+                      (s.Get () [2] - '0');
+            
+        int32 minutes = (s.Get () [4] - '0') * 10 +
+                        (s.Get () [5] - '0');
+            
+        int32 offset = hours * 60 + minutes;
+        
+        if (s.Get () [0] == '-')
+            {
+            offset = -offset;
+            }
+            
+        zone.SetOffsetMinutes (offset);
+        
+        if (zone.IsValid ())
+            {
+            
+            SetZone (zone);
+            
+            }
+    
+        }
+    
+    }
+
+/*****************************************************************************/
+
+dng_string dng_date_time_info::OffsetTime () const
+    {
+    
+    dng_string result;
+    
+    if (TimeZone ().IsValid ())
+        {
+        
+        int32 offset = TimeZone ().OffsetMinutes ();
+        
+        char s [7];
+        
+        s [0] = (offset >= 0) ? '+' : '-';
+        
+        offset = Abs_int32 (offset);
+        
+        uint32 hours   = offset / 60;
+        uint32 minutes = offset % 60;
+        
+        s [1] = (hours / 10) + '0';
+        s [2] = (hours % 10) + '0';
+        
+        s [3] = ':';
+        
+        s [4] = (minutes / 10) + '0';
+        s [5] = (minutes % 10) + '0';
+
+		s [6] = 0;
+
+        result.Set (s);
+                
+        }
+        
+    else
+        {
+        
+        result.Set ("   :  ");
+        
+        }
+        
+    return result;
+    
+    }
+
 /*****************************************************************************/
 
 void dng_date_time_info::Decode_ISO_8601 (const char *s)
@@ -673,7 +754,7 @@ dng_string dng_date_time_info::Encode_IPTC_Time () const
 		
 /*****************************************************************************/
 
-static dng_mutex gDateTimeMutex ("gDateTimeMutex");
+static dng_std_mutex gDateTimeMutex;
 
 /*****************************************************************************/
 
@@ -689,7 +770,7 @@ void CurrentDateTimeAndZone (dng_date_time_info &info)
 	
 		{
 		
-		dng_lock_mutex lock (&gDateTimeMutex);
+		dng_lock_std_mutex lock (gDateTimeMutex);
 		
 		t  = *localtime (&sec);
 		zt = *gmtime    (&sec);
@@ -752,7 +833,7 @@ void DecodeUnixTime (uint32 unixTime, dng_date_time &dt)
 	
 		{
 		
-		dng_lock_mutex lock (&gDateTimeMutex);
+		dng_lock_std_mutex lock (gDateTimeMutex);
 		
 		#if qMacOS && !defined(__MACH__)
 		
@@ -800,32 +881,44 @@ dng_time_zone LocalTimeZone (const dng_date_time &dt)
 		#if qMacOS
 		
 		CFTimeZoneRef zoneRef = CFTimeZoneCopyDefault ();
+
+		CFReleaseHelper<CFTimeZoneRef> zoneRefDeleter (zoneRef);
 		
 		if (zoneRef)
 			{
-			
-			CFGregorianDate gregDate;
 
-			gregDate.year   = dt.fYear;
-			gregDate.month  = (SInt8) dt.fMonth;
-			gregDate.day    = (SInt8) dt.fDay;
-			gregDate.hour   = (SInt8) dt.fHour;
-			gregDate.minute = (SInt8) dt.fMinute;
-			gregDate.second = (SInt8) dt.fSecond;
+			// New path that doesn't use deprecated CFGregorian-based APIs.
+
+			CFCalendarRef calendar =
+				CFCalendarCreateWithIdentifier (kCFAllocatorDefault,
+												kCFGregorianCalendar);
+
+			CFReleaseHelper<CFCalendarRef> calendarDeleter (calendar);
 			
-			CFAbsoluteTime absTime = CFGregorianDateGetAbsoluteTime (gregDate, zoneRef);
+			CFAbsoluteTime absTime;
 			
-			CFTimeInterval secondsDelta = CFTimeZoneGetSecondsFromGMT (zoneRef, absTime);
-		
-			CFRelease (zoneRef);
-			
-			result.SetOffsetSeconds (Round_int32 (secondsDelta));
-			
-			if (result.IsValid ())
+			if (CFCalendarComposeAbsoluteTime (calendar,
+											   &absTime,
+											   "yMdHms",
+											   dt.fYear,
+											   dt.fMonth,
+											   dt.fDay,
+											   dt.fHour,
+											   dt.fMinute,
+											   dt.fSecond))
 				{
-				return result;
+				
+				CFTimeInterval secondsDelta = CFTimeZoneGetSecondsFromGMT (zoneRef, absTime);
+
+				result.SetOffsetSeconds (Round_int32 (secondsDelta));
+
+				if (result.IsValid ())
+					{
+					return result;
+					}
+
 				}
-			
+
 			}
 		
 		#endif

@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2008 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_simple_image.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_simple_image.h"
@@ -18,43 +11,38 @@
 #include "dng_memory.h"
 #include "dng_orientation.h"
 #include "dng_tag_types.h"
+#include "dng_tag_values.h"
 
 /*****************************************************************************/
 
 dng_simple_image::dng_simple_image (const dng_rect &bounds,
 									uint32 planes,
-								    uint32 pixelType,
-								    dng_memory_allocator &allocator)
-								    
+									uint32 pixelType,
+									dng_memory_allocator &allocator)
+									
 	:	dng_image (bounds,
 				   planes,
 				   pixelType)
 				   
-	,	fMemory    ()
-	,	fBuffer    ()
+	,	fBuffer	   ()
+    ,   fMemory    ()
 	,	fAllocator (allocator)
 				   
 	{
 	
-	uint32 pixelSize = TagTypeSize (pixelType);
-	
-	uint32 bytes = bounds.H () * bounds.W () * planes * pixelSize;
+	uint32 bytes = ComputeBufferSize (pixelType, 
+									  bounds.Size (), 
+									  planes, 
+									  padSIMDBytes);
 				   
 	fMemory.Reset (allocator.Allocate (bytes));
 	
-	fBuffer.fArea = bounds;
-	
-	fBuffer.fPlane  = 0;
-	fBuffer.fPlanes = planes;
-	
-	fBuffer.fRowStep   = planes * bounds.W ();
-	fBuffer.fColStep   = planes;
-	fBuffer.fPlaneStep = 1;
-	
-	fBuffer.fPixelType = pixelType;
-	fBuffer.fPixelSize = pixelSize;
-	
-	fBuffer.fData = fMemory->Buffer ();
+	fBuffer = dng_pixel_buffer (bounds, 
+								0, 
+								planes, 
+								pixelType, 
+								pcInterleaved, 
+								fMemory->Buffer ());
 	
 	}
 
@@ -62,7 +50,7 @@ dng_simple_image::dng_simple_image (const dng_rect &bounds,
 
 dng_simple_image::~dng_simple_image ()
 	{
-
+	
 	}
 
 /*****************************************************************************/
@@ -178,18 +166,18 @@ void dng_simple_image::AcquireTileBuffer (dng_tile_buffer &buffer,
 	
 	buffer.fArea = area;
 	
-	buffer.fPlane      = fBuffer.fPlane;
-	buffer.fPlanes     = fBuffer.fPlanes;
-	buffer.fRowStep    = fBuffer.fRowStep;
-	buffer.fColStep    = fBuffer.fColStep;
+	buffer.fPlane	   = fBuffer.fPlane;
+	buffer.fPlanes	   = fBuffer.fPlanes;
+	buffer.fRowStep	   = fBuffer.fRowStep;
+	buffer.fColStep	   = fBuffer.fColStep;
 	buffer.fPlaneStep  = fBuffer.fPlaneStep;
 	buffer.fPixelType  = fBuffer.fPixelType;
 	buffer.fPixelSize  = fBuffer.fPixelSize;
 
 	buffer.fData = (void *) fBuffer.ConstPixel (buffer.fArea.t,
-								  				buffer.fArea.l,
-								  				buffer.fPlane);
-								  		
+												buffer.fArea.l,
+												buffer.fPlane);
+										
 	buffer.fDirty = dirty;
 								  
 	}

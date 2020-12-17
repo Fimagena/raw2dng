@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2007-2011 Adobe Systems Incorporated
+// Copyright 2007-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_preview.h#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #ifndef __dng_preview__
@@ -24,10 +17,11 @@
 #include "dng_opcode_list.h"
 #include "dng_point.h"
 #include "dng_sdk_limits.h"
+#include "dng_uncopyable.h"
 
 /*****************************************************************************/
 
-class dng_preview
+class dng_preview: private dng_uncopyable
 	{
 	
 	public:
@@ -77,14 +71,6 @@ class dng_image_preview: public dng_preview
 								dng_basic_tag_set &basic,
 								dng_stream &stream) const;
 		
-	private:
-	
-		// Hidden copy constructor and assignment operator.
-		
-		dng_image_preview (const dng_image_preview &preview);
-		
-		dng_image_preview & operator= (const dng_image_preview &preview);
-					 
 	};
 
 /*****************************************************************************/
@@ -119,14 +105,6 @@ class dng_jpeg_preview: public dng_preview
 		
 		void SpoolAdobeThumbnail (dng_stream &stream) const;
 		
-	private:
-	
-		// Hidden copy constructor and assignment operator.
-		
-		dng_jpeg_preview (const dng_jpeg_preview &preview);
-		
-		dng_jpeg_preview & operator= (const dng_jpeg_preview &preview);
-					 
 	};
 
 /*****************************************************************************/
@@ -139,6 +117,8 @@ class dng_raw_preview: public dng_preview
 		AutoPtr<dng_image> fImage;
 		
 		AutoPtr<dng_memory_block> fOpcodeList2Data;
+  
+        real64 fBlackLevel [kMaxSamplesPerPixel];
 		
 		int32 fCompressionQuality;
 
@@ -159,19 +139,11 @@ class dng_raw_preview: public dng_preview
 								dng_basic_tag_set &basic,
 								dng_stream &stream) const;
 		
-	private:
-	
-		// Hidden copy constructor and assignment operator.
-		
-		dng_raw_preview (const dng_raw_preview &preview);
-		
-		dng_raw_preview & operator= (const dng_raw_preview &preview);
-					 
 	};
 
 /*****************************************************************************/
 
-class dng_mask_preview: public dng_preview
+class dng_depth_preview: public dng_preview
 	{
 	
 	public:
@@ -179,6 +151,8 @@ class dng_mask_preview: public dng_preview
 		AutoPtr<dng_image> fImage;
 		
 		int32 fCompressionQuality;
+  
+        bool fFullResolution;
 
 	private:
 		
@@ -186,9 +160,9 @@ class dng_mask_preview: public dng_preview
 		
 	public:
 	
-		dng_mask_preview ();
+		dng_depth_preview ();
 		
-		virtual ~dng_mask_preview ();
+		virtual ~dng_depth_preview ();
 		
 		virtual dng_basic_tag_set * AddTagSet (dng_tiff_directory &directory) const;
 		
@@ -197,15 +171,37 @@ class dng_mask_preview: public dng_preview
 								dng_basic_tag_set &basic,
 								dng_stream &stream) const;
 		
-	private:
-	
-		// Hidden copy constructor and assignment operator.
-		
-		dng_mask_preview (const dng_mask_preview &preview);
-		
-		dng_mask_preview & operator= (const dng_mask_preview &preview);
-					 
 	};
+
+/*****************************************************************************/
+
+class dng_mask_preview: public dng_preview
+    {
+    
+    public:
+    
+        AutoPtr<dng_image> fImage;
+        
+        int32 fCompressionQuality;
+
+    private:
+        
+        mutable dng_ifd fIFD;
+        
+    public:
+    
+        dng_mask_preview ();
+        
+        virtual ~dng_mask_preview ();
+        
+        virtual dng_basic_tag_set * AddTagSet (dng_tiff_directory &directory) const;
+        
+        virtual void WriteData (dng_host &host,
+                                dng_image_writer &writer,
+                                dng_basic_tag_set &basic,
+                                dng_stream &stream) const;
+        
+    };
 
 /*****************************************************************************/
 

@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2012 Adobe Systems Incorporated
+// Copyright 2012-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_uncopyable.h#1 $ */ 
-/* $DateTime: 2012/09/05 12:31:51 $ */
-/* $Change: 847652 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #ifndef __dng_uncopyable__

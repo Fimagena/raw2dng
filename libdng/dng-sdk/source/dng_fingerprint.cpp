@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_fingerprint.cpp#3 $ */ 
-/* $DateTime: 2012/07/11 10:36:56 $ */
-/* $Change: 838485 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_fingerprint.h"
@@ -23,7 +16,7 @@
 dng_fingerprint::dng_fingerprint ()
 	{
 	
-	for (uint32 j = 0; j < 16; j++)
+	for (uint32 j = 0; j < kDNGFingerprintSize; j++)
 		{
 		
 		data [j] = 0;
@@ -34,10 +27,24 @@ dng_fingerprint::dng_fingerprint ()
 
 /*****************************************************************************/
 
+dng_fingerprint::dng_fingerprint (const char *hex)
+    {
+    
+    if (!hex || strlen (hex) != kDNGFingerprintSize * 2 || !FromUtf8HexString (hex))
+        {
+        
+        Clear ();
+        
+        }
+        
+    }
+		
+/*****************************************************************************/
+
 bool dng_fingerprint::IsNull () const
 	{
 	
-	for (uint32 j = 0; j < 16; j++)
+	for (uint32 j = 0; j < kDNGFingerprintSize; j++)
 		{
 		
 		if (data [j] != 0)
@@ -58,7 +65,7 @@ bool dng_fingerprint::IsNull () const
 bool dng_fingerprint::operator== (const dng_fingerprint &print) const
 	{
 	
-	for (uint32 j = 0; j < 16; j++)
+	for (uint32 j = 0; j < kDNGFingerprintSize; j++)
 		{
 		
 		if (data [j] != print.data [j])
@@ -73,7 +80,28 @@ bool dng_fingerprint::operator== (const dng_fingerprint &print) const
 	return true;
 	
 	}
+
+/******************************************************************************/
+
+bool dng_fingerprint::operator< (const dng_fingerprint &print) const
+    {
+	
+	for (uint32 j = 0; j < kDNGFingerprintSize; j++)
+		{
+        
+        if (data [j] != print.data [j])
+            {
 		
+            return data [j] < print.data [j];
+            
+            }
+			
+		}
+		
+	return false;
+	
+	}
+
 /******************************************************************************/
 
 uint32 dng_fingerprint::Collapse32 () const
@@ -128,7 +156,7 @@ void dng_fingerprint::ToUtf8HexString (char resultStr [2 * kDNGFingerprintSize +
 		
 		unsigned char c = data [i];
 
-		resultStr [i * 2] = NumToHexChar (c >> 4);
+		resultStr [i * 2    ] = NumToHexChar (c >> 4);
 		resultStr [i * 2 + 1] = NumToHexChar (c & 15);
 		
 		}
@@ -448,6 +476,7 @@ void dng_md5_printer::Decode (uint32 *output,
 
 // MD5 basic transformation. Transforms state based on block.
 
+DNG_ATTRIB_NO_SANITIZE("unsigned-integer-overflow")
 void dng_md5_printer::MD5Transform (uint32 state [4],
 								    const uint8 block [64])
 	{

@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_auto_ptr.h#2 $ */ 
-/* $DateTime: 2012/07/11 10:36:56 $ */
-/* $Change: 838485 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Class to implement std::auto_ptr like functionality even on platforms which do not
@@ -23,6 +18,8 @@
 
 #include <stddef.h>
 
+#include "dng_uncopyable.h"
+
 /*****************************************************************************/
 
 // The following template has similar functionality to the STL auto_ptr, without
@@ -35,7 +32,7 @@
 /// Release on the AutoPtr first.
 
 template<class T>
-class AutoPtr
+class AutoPtr: private dng_uncopyable
 	{
 	
 	private:
@@ -103,15 +100,6 @@ class AutoPtr
 			y.p_ = temp;
 			}
 		
-	private:
-	
-		// Hidden copy constructor and assignment operator. I don't think the STL
-		// "feature" of grabbing ownership of the pointer is a good idea.
-	
-		AutoPtr (AutoPtr<T> &rhs);
-
-		AutoPtr<T> & operator= (AutoPtr<T> &rhs);
-		
 	};
 
 /*****************************************************************************/
@@ -177,13 +165,13 @@ void AutoPtr<T>::Alloc ()
 /// \brief A class intended to be used similarly to AutoPtr but for arrays.
 
 template<typename T>
-class AutoArray
+class AutoArray: private dng_uncopyable
 	{
 
 	public:
 
 		/// Construct an AutoArray which owns the argument pointer.
-		/// \param p array pointer which constructed AutoArray takes ownership of. p
+		/// \param p_ array pointer which constructed AutoArray takes ownership of. p_
 		/// will be deleted on destruction or Reset unless Release is called first.
 
 		explicit AutoArray (T *p_ = 0) : p (p_) { }
@@ -206,9 +194,9 @@ class AutoArray
 			return p_;
 			}
 
-		/// If a pointer is owned, it is deleted. Ownership is taken of passed in
-		/// pointer.
-		/// \param p array pointer which constructed AutoArray takes ownership of. p
+		/// If an array pointer is owned, it is deleted. Ownership is
+		/// taken of the passed in pointer p_.
+		/// \param p_ array pointer which constructed AutoArray takes ownership of. p_
 		/// will be deleted on destruction or Reset unless Release is called first.
 
 		void Reset (T *p_ = 0)
@@ -235,14 +223,6 @@ class AutoArray
 			{
 			return p;
 			}
-
-	private:
-
-		// Hidden copy constructor and assignment operator.
-
-		AutoArray (const AutoArray &);
-
-		const AutoArray & operator= (const AutoArray &);
 
 	private:
 

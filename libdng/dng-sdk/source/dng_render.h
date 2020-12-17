@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_render.h#2 $ */ 
-/* $DateTime: 2012/07/31 22:04:34 $ */
-/* $Change: 840853 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Classes for conversion of RAW data to final image.
@@ -26,7 +21,29 @@
 #include "dng_auto_ptr.h"
 #include "dng_classes.h"
 #include "dng_spline.h"
+#include "dng_uncopyable.h"
 #include "dng_xy_coord.h"
+
+/******************************************************************************/
+
+/// \brief Curve for removing zero offset from stage3 image.
+
+class dng_function_zero_offset: public dng_1d_function
+    {
+    
+    public:
+    
+        real64 fZeroOffset;
+        
+        real64 fScale;
+        
+    public:
+        
+        dng_function_zero_offset (real64 zeroOffset);
+        
+        virtual real64 Evaluate (real64 x) const;
+
+    };
 
 /******************************************************************************/
 
@@ -128,7 +145,7 @@ class dng_function_gamma_encode: public dng_1d_function
 
 /// \brief Class used to render digital negative to displayable image.
 
-class dng_render
+class dng_render: private dng_uncopyable
 	{
 	
 	protected:
@@ -295,14 +312,6 @@ class dng_render
 
 		virtual dng_image * Render ();
 									
-	private:
-	
-		// Hidden copy constructor and assignment operator.
-		
-		dng_render (const dng_render &render);
-		
-		dng_render & operator= (const dng_render &render);
-	
 	};
 
 /*****************************************************************************/

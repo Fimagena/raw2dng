@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006-2008 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_date_time.h#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Functions and classes for working with dates and times in DNG files.
@@ -233,6 +228,11 @@ class dng_date_time_info
 			{
 			*this = dng_date_time_info ();
 			}
+   
+        bool IsDateOnly () const
+            {
+            return fDateOnly;
+            }
 			
 		const dng_date_time & DateTime () const
 			{
@@ -264,6 +264,15 @@ class dng_date_time_info
 			{
 			fTimeZone = zone;
 			}
+   
+        void ClearZone ()
+            {
+            fTimeZone.Clear ();
+            }
+   
+        void SetOffsetTime (const dng_string &s);
+        
+        dng_string OffsetTime () const;
 			
 		void Decode_ISO_8601 (const char *s);
 		
@@ -371,12 +380,6 @@ class dng_date_time_storage_info
 		dng_date_time_format Format () const;
 	
 	};
-
-/*****************************************************************************/
-
-// Kludge: Global boolean to turn on fake time zones in XMP for old software.
-
-extern bool gDNGUseFakeTimeZonesInXMP;
 
 /*****************************************************************************/
 

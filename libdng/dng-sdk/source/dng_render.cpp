@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_render.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_render.h"
@@ -25,7 +18,29 @@
 #include "dng_image.h"
 #include "dng_negative.h"
 #include "dng_resample.h"
+#include "dng_safe_arithmetic.h"
 #include "dng_utils.h"
+
+/*****************************************************************************/
+
+dng_function_zero_offset::dng_function_zero_offset (real64 zeroOffset)
+
+    :   fZeroOffset (zeroOffset)
+
+    ,   fScale (1.0 / (1.0 - zeroOffset))
+
+    {
+    
+    }
+
+/*****************************************************************************/
+
+real64 dng_function_zero_offset::Evaluate (real64 x) const
+    {
+    
+    return Pin_real64 (0.0, (x - fZeroOffset) * fScale, 1.0);
+    
+    }
 
 /*****************************************************************************/
 
@@ -703,6 +718,8 @@ class dng_render_task: public dng_filter_task
 	{
 	
 	protected:
+ 
+        const dng_image *fSrcMask;
 	
 		const dng_negative &fNegative;
 	
@@ -710,6 +727,8 @@ class dng_render_task: public dng_filter_task
 		
 		dng_point fSrcOffset;
 		
+        dng_1d_table fZeroOffsetRamp;
+        
 		dng_vector fCameraWhite;
 		dng_matrix fCameraToRGB;
 		
@@ -732,10 +751,13 @@ class dng_render_task: public dng_filter_task
 		AutoPtr<dng_1d_table> fLookTableDecode;
 	
 		AutoPtr<dng_memory_block> fTempBuffer [kMaxMPThreads];
+  
+        AutoPtr<dng_memory_block> fMaskBuffer [kMaxMPThreads];
 		
 	public:
 	
 		dng_render_task (const dng_image &srcImage,
+                         const dng_image *srcMask,
 						 dng_image &dstImage,
 						 const dng_negative &negative,
 						 const dng_render &params,
@@ -744,6 +766,7 @@ class dng_render_task: public dng_filter_task
 		virtual dng_rect SrcArea (const dng_rect &dstArea);
 			
 		virtual void Start (uint32 threadCount,
+							const dng_rect &dstArea,
 							const dng_point &tileSize,
 							dng_memory_allocator *allocator,
 							dng_abort_sniffer *sniffer);
@@ -757,18 +780,23 @@ class dng_render_task: public dng_filter_task
 /*****************************************************************************/
 
 dng_render_task::dng_render_task (const dng_image &srcImage,
+                                  const dng_image *srcMask,
 								  dng_image &dstImage,
 								  const dng_negative &negative,
 								  const dng_render &params,
 								  const dng_point &srcOffset)
 								  
-	:	dng_filter_task (srcImage,
+	:	dng_filter_task ("dng_render_task",
+						 srcImage,
 						 dstImage)
-						 
+
+    ,   fSrcMask   (srcMask  )
 	,	fNegative  (negative )
 	,	fParams    (params   )
 	,	fSrcOffset (srcOffset)
-	
+
+    ,   fZeroOffsetRamp ()
+
 	,	fCameraWhite ()
 	,	fCameraToRGB ()
 	
@@ -809,15 +837,28 @@ dng_rect dng_render_task::SrcArea (const dng_rect &dstArea)
 /*****************************************************************************/
 
 void dng_render_task::Start (uint32 threadCount,
+							 const dng_rect &dstArea,
 							 const dng_point &tileSize,
 							 dng_memory_allocator *allocator,
 							 dng_abort_sniffer *sniffer)
 	{
 	
 	dng_filter_task::Start (threadCount,
+							dstArea,
 							tileSize,
 							allocator,
 							sniffer);
+       
+    // Compute zero offset ramp, if any.
+    
+    if (fNegative.Stage3BlackLevel ())
+        {
+        
+        dng_function_zero_offset offsetFunction (fNegative.Stage3BlackLevelNormalized ());
+            
+        fZeroOffsetRamp.Initialize (*allocator, offsetFunction);
+
+        }
 							
 	// Compute camera space to linear ProPhoto RGB parameters.
 	
@@ -960,7 +1001,15 @@ void dng_render_task::Start (uint32 threadCount,
 
 	// Allocate temp buffer to hold one row of RGB data.
 							
-	uint32 tempBufferSize = tileSize.h * (uint32) sizeof (real32) * 3;
+	uint32 tempBufferSize = 0;
+	
+	if (!SafeUint32Mult (tileSize.h, (uint32) sizeof (real32), &tempBufferSize) ||
+		!SafeUint32Mult (tempBufferSize, 3, &tempBufferSize))
+		{
+		
+		ThrowOverflow ("Arithmetic overflow computing buffer size.");
+		
+		}
 	
 	for (uint32 threadIndex = 0; threadIndex < threadCount; threadIndex++)
 		{
@@ -968,6 +1017,30 @@ void dng_render_task::Start (uint32 threadCount,
 		fTempBuffer [threadIndex] . Reset (allocator->Allocate (tempBufferSize));
 		
 		}
+  
+    // Allocate mask buffer to hold one tile of mask data, if needed.
+    
+    if (fSrcMask)
+        {
+        
+        uint32 maskBufferSize = 0;
+        
+        if (!SafeUint32Mult (tileSize.h, tileSize.v, &maskBufferSize) ||
+            !SafeUint32Mult (maskBufferSize, (uint32) sizeof (real32), &maskBufferSize))
+            {
+            
+            ThrowOverflow ("Arithmetic overflow computing buffer size.");
+            
+            }
+    
+        for (uint32 threadIndex = 0; threadIndex < threadCount; threadIndex++)
+            {
+            
+            fMaskBuffer [threadIndex] . Reset (allocator->Allocate (maskBufferSize));
+            
+            }
+        
+        }
 
 	}
 							
@@ -988,9 +1061,49 @@ void dng_render_task::ProcessArea (uint32 threadIndex,
 	real32 *tPtrG = tPtrR + srcCols;
 	real32 *tPtrB = tPtrG + srcCols;
 	
+    dng_pixel_buffer maskBuffer;
+        
+    if (fSrcMask)
+        {
+        
+        maskBuffer.fArea      = srcArea;
+        maskBuffer.fPlane     = 0;
+        maskBuffer.fPlanes    = 1;
+        maskBuffer.fRowStep   = srcArea.W ();
+        maskBuffer.fColStep   = 1;
+        maskBuffer.fPlaneStep = 0;
+        maskBuffer.fPixelType = ttFloat;
+        maskBuffer.fPixelSize = sizeof (real32);
+        maskBuffer.fData      = fMaskBuffer [threadIndex]->Buffer_real32 ();
+        maskBuffer.fDirty     = true;
+        
+        fSrcMask->Get (maskBuffer);
+         
+        }
+
 	for (int32 srcRow = srcArea.t; srcRow < srcArea.b; srcRow++)
 		{
-		
+  
+        if (fNegative.Stage3BlackLevel ())
+            {
+            
+            for (uint32 plane = 0; plane < fSrcPlanes; plane++)
+                {
+                
+                real32 *sPtr = (real32 *)
+                               srcBuffer.DirtyPixel (srcRow,
+                                                     srcArea.l,
+                                                     plane);
+
+                DoBaseline1DTable (sPtr,
+                                   sPtr,
+                                   srcCols,
+                                   fZeroOffsetRamp);
+                    
+                }
+            
+            }
+        
 		// First convert from camera native space to linear PhotoRGB,
 		// applying the white balance and camera profile.
 		
@@ -1180,6 +1293,33 @@ void dng_render_task::ProcessArea (uint32 threadIndex,
 							   fEncodeGamma);
 							   
 			}
+   
+        if (fSrcMask)
+            {
+            
+            const real32 *mPtr = maskBuffer.ConstPixel_real32 (srcRow,
+                                                               srcArea.l,
+                                                               0);
+                
+            for (uint32 dstPlane = 0; dstPlane < fDstPlanes; dstPlane++)
+                {
+                
+                real32 *dPtr = dstBuffer.DirtyPixel_real32 (dstRow,
+                                                            dstArea.l,
+                                                            dstPlane);
+                    
+                for (uint32 col = 0; col < srcCols; col++)
+                    {
+                    
+                    // White Matte
+                    
+                    dPtr [col] = 1.0f - (1.0f - dPtr [col]) * mPtr [col];
+                    
+                    }
+                    
+                }
+
+            }
 		
 		}
 	
@@ -1252,9 +1392,11 @@ dng_image * dng_render::Render ()
 	{
 	
 	const dng_image *srcImage = fNegative.Stage3Image ();
+ 
+    const dng_image *srcMask = fNegative.TransparencyMask ();
 	
 	dng_rect srcBounds = fNegative.DefaultCropArea ();
-	
+ 
 	dng_point dstSize;
 	
 	dstSize.h =	fNegative.DefaultFinalWidth  ();
@@ -1285,6 +1427,8 @@ dng_image * dng_render::Render ()
 		}
 		
 	AutoPtr<dng_image> tempImage;
+ 
+    AutoPtr<dng_image> tempMask;
 	
 	if (srcBounds.Size () != dstSize)
 		{
@@ -1299,6 +1443,24 @@ dng_image * dng_render::Render ()
 					   srcBounds,
 					   tempImage->Bounds (),
 					   dng_resample_bicubic::Get ());
+        
+        if (srcMask != NULL)
+            {
+            
+            tempMask.Reset (fHost.Make_dng_image (dstSize,
+                                                  srcMask->Planes    (),
+                                                  srcMask->PixelType ()));
+                
+            ResampleImage (fHost,
+                           *srcMask,
+                           *tempMask.Get (),
+                           srcBounds,
+                           tempMask->Bounds (),
+                           dng_resample_bicubic::Get ());
+                
+            srcMask = tempMask.Get ();
+ 
+            }
 						   
 		srcImage = tempImage.Get ();
 		
@@ -1313,6 +1475,7 @@ dng_image * dng_render::Render ()
 													   FinalPixelType ()));
 													 
 	dng_render_task task (*srcImage,
+                          srcMask,
 						  *dstImage.Get (),
 						  fNegative,
 						  *this,

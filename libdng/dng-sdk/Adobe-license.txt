@@ -1,17 +1,4 @@
-This licence from Adobe covers copying the files in dng-sdk/source.
-
-It is a non-copyleft free software license, compatible with the GNU GPL.
-
-The documentation clauses are non-free but no relevant documentation is included.
-
-It was downloaded from http://www.adobe.com/support/downloads/dng/dng_sdk_eula_mac.html
-
------
-
-DNG SDK License Agreement
-
 NOTICE TO USER:
-
 Adobe Systems Incorporated provides the Software and Documentation for use under the terms of this Agreement. Any download, installation, use, reproduction, modification or distribution of the Software or Documentation, or any derivatives or portions thereof, constitutes your acceptance of this Agreement.
 
 As used in this Agreement, "Adobe" means Adobe Systems Incorporated. "Software" means the software code, in any format, including sample code and source code, accompanying this Agreement. "Documentation" means the documents, specifications and all other items accompanying this Agreement other than the Software.
@@ -47,5 +34,3 @@ Your rights under this Agreement shall terminate if you fail to comply with any 
 This Agreement supersedes any prior agreement, oral or written, between Adobe and you with respect to the licensing to you of the Software and Documentation. No variation of the terms of this Agreement will be enforceable against Adobe unless Adobe gives its express consent in writing signed by an authorized signatory of Adobe. If any part of this Agreement is found void and unenforceable, it will not affect the validity of the balance of the Agreement, which shall remain valid and enforceable according to its terms.
 
 For licensing information on the DNG File Format Specification, which is not included in the DNG SDK, please visit: http://www.adobe.com/products/dng/license.html.
-
-

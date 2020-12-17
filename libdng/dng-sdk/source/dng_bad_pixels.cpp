@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2008 Adobe Systems Incorporated
+// Copyright 2008-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_bad_pixels.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_bad_pixels.h"
@@ -1017,6 +1010,8 @@ void dng_opcode_FixBadPixelsList::FixIsolatedPixel (dng_pixel_buffer &buffer,
 		count += 2;
 		}
 
+	count = Max_uint32 (count, 1);			 // Suppress div-by-zero warning.
+
 	uint32 estimate = (total + (count >> 1)) / count;
 	
 	p2 [2] = (uint16) estimate;
@@ -1504,6 +1499,8 @@ void dng_opcode_FixBadPixelsList::FixSingleColumn (dng_pixel_buffer &buffer,
 			total += est6;
 			count += 2;
 			}
+
+		count = Max_uint32 (count, 1);		 // Suppress div-by-zero warning.
 
 		uint32 estimate = (total + (count >> 1)) / count;
 		

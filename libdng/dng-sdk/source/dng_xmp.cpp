@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2008 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_xmp.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_xmp.h"
@@ -283,18 +276,18 @@ dng_string dng_xmp::EncodeGPSCoordinate (const dng_string &ref,
 						   coord [1].As_real64 () +
 						   coord [2].As_real64 () * (1.0 / 60.0);
 						   
-				// Round to fractional four decimal places.
+				// Round to fractional seven decimal places.
 				
-				uint32 y = Round_uint32 (x * 10000.0);
+				uint64 y = (uint64) Round_int64 (x * 10000000.0);
 				
 				// Split into degrees and minutes.
 				
-				uint32 d = y / (60 * 10000);
-				uint32 m = y % (60 * 10000);
+				uint32 d = (uint32) (y / (60 * 10000000));
+				uint32 m = (uint32) (y % (60 * 10000000));
 				
 				char min [32];
 				
-				sprintf (min, "%.4f", m * (1.0 / 10000.0));
+				sprintf (min, "%.7f", m * (1.0 / 10000000.0));
 
 				TrimDecimal (min);
 				
@@ -344,7 +337,7 @@ void dng_xmp::DecodeGPSCoordinate (const dng_string &s,
 			
 			ss.Truncate (ss.Length () - 1);
 			
-			ss.NormalizeAsCommaSeparatedNumbers();
+			ss.NormalizeAsCommaSeparatedNumbers ();
 				
 			int degrees = 0;
 			
@@ -373,13 +366,13 @@ void dng_xmp::DecodeGPSCoordinate (const dng_string &s,
 			
 			if (count <= 2)
 				{
-				coord [1].Set_real64 (minutes, 10000);
+				coord [1].Set_real64 (minutes, 10000000);
 				coord [2] = dng_urational (0, 1);
 				}
 			else
 				{
 				coord [1].Set_real64 (minutes, 1);
-				coord [2].Set_real64 (seconds, 100);
+				coord [2].Set_real64 (seconds, 100000);
 				}
 				
 			char r [2];
@@ -1009,12 +1002,35 @@ void dng_xmp::SetAltLangDefault (const char *ns,
 
 /*****************************************************************************/
 
+void dng_xmp::SetLocalString (const char *ns,
+							  const char *path,
+							  const dng_local_string &s)
+	{
+		
+	fSDK->SetLocalString (ns, path, s);
+
+	}
+
+/*****************************************************************************/
+
 bool dng_xmp::GetAltLangDefault (const char *ns,
 								 const char *path,
-								 dng_string &s) const
+								 dng_string &s,
+                                 bool silent) const
 	{
 			
-	return fSDK->GetAltLangDefault (ns, path, s);
+	return fSDK->GetAltLangDefault (ns, path, s, silent);
+
+	}
+
+/*****************************************************************************/
+
+bool dng_xmp::GetLocalString (const char *ns,
+							  const char *path,
+							  dng_local_string &s) const
+	{
+			
+	return fSDK->GetLocalString (ns, path, s);
 
 	}
 
@@ -2389,6 +2405,97 @@ void dng_xmp::SyncFlash (uint32 &flashState,
 
 /*****************************************************************************/
 
+void dng_xmp::GenerateDefaultLensName (dng_exif &exif)
+	{
+	
+	// Generate default lens name from lens info if required.
+	// Ignore names names that end in "f/0.0" due to third party bug.
+	
+	if ((exif.fLensName.IsEmpty () ||
+		 exif.fLensName.EndsWith ("f/0.0")) && exif.fLensInfo [0].IsValid ())
+		{
+		
+		char s [256];
+		
+		real64 minFL = exif.fLensInfo [0].As_real64 ();
+		real64 maxFL = exif.fLensInfo [1].As_real64 ();
+		
+		// The f-stop numbers are optional.
+		
+		if (exif.fLensInfo [2].IsValid ())
+			{
+			
+			real64 minFS = exif.fLensInfo [2].As_real64 ();
+			real64 maxFS = exif.fLensInfo [3].As_real64 ();
+			
+			if (minFL == maxFL)
+				sprintf (s, "%.1f mm f/%.1f", minFL, minFS);
+			
+			else if (minFS == maxFS)
+				sprintf (s, "%.1f-%.1f mm f/%.1f", minFL, maxFL, minFS);
+			
+			else
+				sprintf (s, "%.1f-%.1f mm f/%.1f-%.1f", minFL, maxFL, minFS, maxFS);
+			
+			}
+		
+		else
+			{
+			
+			if (minFL == maxFL)
+				sprintf (s, "%.1f mm", minFL);
+			
+			else
+				sprintf (s, "%.1f-%.1f mm", minFL, maxFL);
+			
+			}
+		
+		exif.fLensName.Set (s);
+		
+		SetString (XMP_NS_AUX,
+				   "Lens",
+				   exif.fLensName);
+
+		// Don't generate exifEX for now.
+		
+		// SetString (XMP_NS_EXIFEX,
+		// 		   "LensModel",
+		// 		   exif.fLensName);
+		
+		}
+	
+	}
+
+/*****************************************************************************/
+
+void dng_xmp::SyncLensName (dng_exif &exif)
+	{
+	
+	// EXIF lens names are sometimes missing or wrong (esp. when non-OEM lenses
+	// are used). So prefer the value from XMP.
+		
+	// Check XMP for the lens model in the aux namespace first. If not there,
+	// then check the exifEX namespace.
+
+	if (!SyncString (XMP_NS_AUX,
+					 "Lens",
+					 exif.fLensName,
+					 preferXMP))
+		{
+
+		SyncString (XMP_NS_EXIFEX,
+					"LensModel",
+					exif.fLensName,
+					preferXMP);
+
+		}
+		
+	GenerateDefaultLensName (exif);
+	
+	}
+
+/*****************************************************************************/
+
 void dng_xmp::SyncExif (dng_exif &exif,
 						const dng_exif *originalExif,
 						bool doingUpdateFromXMP,
@@ -2425,95 +2532,107 @@ void dng_xmp::SyncExif (dng_exif &exif,
 	// Exif version number:
 	
 		{
-		
-		dng_string exifVersion;
-		
-		if (exif.fExifVersion)
-			{
-			
-			unsigned b0 = ((exif.fExifVersion >> 24) & 0x0FF) - '0';
-			unsigned b1 = ((exif.fExifVersion >> 16) & 0x0FF) - '0';
-			unsigned b2 = ((exif.fExifVersion >>  8) & 0x0FF) - '0';
-			unsigned b3 = ((exif.fExifVersion      ) & 0x0FF) - '0';
-			
-			if (b0 <= 9 && b1 <= 9 && b2 <= 9 && b3 <= 9)
-				{
-				
-				char s [5];
-	
-				sprintf (s,
-						 "%1u%1u%1u%1u",
-						 b0,
-						 b1,
-						 b2,
-						 b3);
-				
-				exifVersion.Set (s);
-				
-				}
-				
-			}
-			
-		SyncString (XMP_NS_EXIF,
-					"ExifVersion",
-					exifVersion,
-					readOnly);
-					
-		if (exifVersion.NotEmpty ())
-			{
-			
-			unsigned b0;
-			unsigned b1;
-			unsigned b2;
-			unsigned b3;
-			
-			if (sscanf (exifVersion.Get (),
-						"%1u%1u%1u%1u",
-						&b0,
-						&b1,
-						&b2,
-						&b3) == 4)
-				{
-				
-				if (b0 <= 9 && b1 <= 9 && b2 <= 9 && b3 <= 9)
-					{
-					
-					b0 += '0';
-					b1 += '0';
-					b2 += '0';
-					b3 += '0';
-					
-					exif.fExifVersion = (b0 << 24) |
-										(b1 << 16) |
-										(b2 <<  8) |
-										(b3      );
-					
-					}
-				
-				}
-			
-			}
-			
-		// Provide default value for ExifVersion.
-		
-		if (!exif.fExifVersion)
-			{
-			
-			exif.fExifVersion = DNG_CHAR4 ('0','2','2','1');
-		
-			Set (XMP_NS_EXIF,
-				 "ExifVersion",
-				 "0221");
-					
-			}
-			
-		if (removeFromXMP)
-			{
-			
-			Remove (XMP_NS_EXIF, "ExifVersion");
-			
-			}
-		
+  
+        // Find version number in XMP, if any.
+        
+        uint32 xmpVersion = 0;
+        
+            {
+  
+            dng_string s;
+            
+            if (GetString (XMP_NS_EXIF, "ExifVersion", s))
+                {
+                
+                unsigned b0;
+                unsigned b1;
+                unsigned b2;
+                unsigned b3;
+                
+                if (sscanf (s.Get (),
+                            "%1u%1u%1u%1u",
+                            &b0,
+                            &b1,
+                            &b2,
+                            &b3) == 4)
+                    {
+                    
+                    if (b0 <= 9 && b1 <= 9 && b2 <= 9 && b3 <= 9)
+                        {
+                        
+                        b0 += '0';
+                        b1 += '0';
+                        b2 += '0';
+                        b3 += '0';
+                        
+                        xmpVersion = (b0 << 24) |
+                                     (b1 << 16) |
+                                     (b2 <<  8) |
+                                     (b3      );
+                            
+                        }
+                        
+                    }
+ 
+                }
+                
+            }
+            
+        // Use maximum logic for merging.
+        
+        exif.fExifVersion = Max_uint32 (exif.fExifVersion, xmpVersion);
+        
+        // Provide default value for ExifVersion.
+        
+        if (!exif.fExifVersion)
+            {
+            exif.SetVersion0231 ();
+            }
+            
+        // Update XMP.
+        
+        dng_string xmpString;
+        
+        if (exif.fExifVersion)
+            {
+            
+            unsigned b0 = ((exif.fExifVersion >> 24) & 0x0FF) - '0';
+            unsigned b1 = ((exif.fExifVersion >> 16) & 0x0FF) - '0';
+            unsigned b2 = ((exif.fExifVersion >>  8) & 0x0FF) - '0';
+            unsigned b3 = ((exif.fExifVersion      ) & 0x0FF) - '0';
+            
+            if (b0 <= 9 && b1 <= 9 && b2 <= 9 && b3 <= 9)
+                {
+                
+                char s [5];
+    
+                sprintf (s,
+                         "%1u%1u%1u%1u",
+                         b0,
+                         b1,
+                         b2,
+                         b3);
+                
+                xmpString.Set (s);
+                
+                }
+                
+            }
+            
+        if (removeFromXMP || xmpString.IsEmpty ())
+            {
+            
+            Remove (XMP_NS_EXIF, "ExifVersion");
+            
+            }
+            
+        else
+            {
+            
+            SetString (XMP_NS_EXIF, "ExifVersion", xmpString);
+            
+            }
+        
 		}
 		
 	// ExposureTime / ShutterSpeedValue:
@@ -3174,6 +3293,13 @@ void dng_xmp::SyncExif (dng_exif &exif,
 				
 						}
 						
+					else if (s [0] == 0)
+						{
+						
+						valid = false;
+						
+						}
+						
 					else
 						{
 						
@@ -3358,11 +3484,14 @@ void dng_xmp::SyncExif (dng_exif &exif,
 			
 			}
 			
+		// Check XMP for the lens specification in the aux namespace first. If
+		// not there, then check the exifEX namespace.
+	
 		SyncString (XMP_NS_AUX,
 					"LensInfo",
 				    s,
 				    readOnly);
-				    
+
 		if (s.NotEmpty ())
 			{
 			
@@ -3393,71 +3522,54 @@ void dng_xmp::SyncExif (dng_exif &exif,
 			
 			}
 
+		else
+			{
+
+			// Not found in aux, so examine exifEX.
+
+			dng_string_list strList;
+
+			SyncStringList (XMP_NS_EXIFEX,
+							"LensSpecification",
+							strList,
+							false,
+							readOnly);
+
+			if (strList.Count () == 4)
+				{
+
+				const dng_string &s0 = strList [0];
+				const dng_string &s1 = strList [1];
+				const dng_string &s2 = strList [2];
+				const dng_string &s3 = strList [3];
+
+				unsigned n [4];
+				unsigned d [4];
+
+				if (sscanf (s0.Get (), "%u/%u", &n [0], &d [0]) == 2 &&
+					sscanf (s1.Get (), "%u/%u", &n [1], &d [1]) == 2 &&
+					sscanf (s2.Get (), "%u/%u", &n [2], &d [2]) == 2 &&
+					sscanf (s3.Get (), "%u/%u", &n [3], &d [3]) == 2)
+					{
+
+					for (uint32 j = 0; j < 4; j++)
+						{
+
+						exif.fLensInfo [j] = dng_urational (n [j], d [j]);
+
+						}
+
+					}
+
+				}
+
+			}
+
 		}
 		
 	// Lens name:
 	
-		{
-		
-		// EXIF lens names are sometimes missing or wrong (esp. when non-OEM lenses
-		// are used). So prefer the value from XMP.
-		
-		SyncString (XMP_NS_AUX,
-					"Lens",
-					exif.fLensName,
-					preferXMP);
-
-		// Generate default lens name from lens info if required.
-		// Ignore names names that end in "f/0.0" due to third party bug.
-		
-		if ((exif.fLensName.IsEmpty () ||
-			 exif.fLensName.EndsWith ("f/0.0")) && exif.fLensInfo [0].IsValid ())
-			{
-			
-			char s [256];
-							
-			real64 minFL = exif.fLensInfo [0].As_real64 ();
-			real64 maxFL = exif.fLensInfo [1].As_real64 ();
-			
-			// The f-stop numbers are optional.
-			
-			if (exif.fLensInfo [2].IsValid ())
-				{
-				
-				real64 minFS = exif.fLensInfo [2].As_real64 ();
-				real64 maxFS = exif.fLensInfo [3].As_real64 ();
-				
-				if (minFL == maxFL)
-					sprintf (s, "%.1f mm f/%.1f", minFL, minFS);
-					
-				else if (minFS == maxFS)
-					sprintf (s, "%.1f-%.1f mm f/%.1f", minFL, maxFL, minFS);
-					
-				else
-					sprintf (s, "%.1f-%.1f mm f/%.1f-%.1f", minFL, maxFL, minFS, maxFS);
-				
-				}
-				
-			else
-				{
-				
-				if (minFL == maxFL)
-					sprintf (s, "%.1f mm", minFL);
-					
-				else
-					sprintf (s, "%.1f-%.1f mm", minFL, maxFL);
-				
-				}
-				
-			exif.fLensName.Set (s);
-				
-			SetString (XMP_NS_AUX,
-					   "Lens",
-					   exif.fLensName);
-			
-			}
-
-		}
+	SyncLensName (exif);
 
 	// Lens ID:
 	
@@ -3468,10 +3580,19 @@ void dng_xmp::SyncExif (dng_exif &exif,
 	
 	// Lens Make:
 	
-	SyncString (XMP_NS_EXIF,
-				"LensMake",
-				exif.fLensMake,
-				readOnly + removable);
+	if (!SyncString (XMP_NS_EXIF,
+					 "LensMake",
+					 exif.fLensMake,
+					 readOnly + removable))
+
+		{
+
+		SyncString (XMP_NS_EXIFEX,
+					"LensMake",
+					exif.fLensMake,
+					readOnly + removable);
+
+		}
 		
 	// Lens Serial Number:
 	
@@ -3486,8 +3607,8 @@ void dng_xmp::SyncExif (dng_exif &exif,
 				 "ImageNumber",
 				 exif.fImageNumber,
 				 exif.fImageNumber == 0xFFFFFFFF,
-				 readOnly);
-		
+                 preferXMP);    // CR-4197237: Preserve aux:ImageNumber in XMP when Updating Metadata
+        
 	// User Comment:
 	
 	if (exif.fUserComment.NotEmpty ())
@@ -3517,6 +3638,69 @@ void dng_xmp::SyncExif (dng_exif &exif,
 
 	SyncApproximateFocusDistance (exif,
 								  readOnly);
+
+	// LensDistortInfo:
+
+		{
+		
+		dng_string s;
+		
+		if (exif.HasLensDistortInfo ())
+			{
+			
+			char ss [256];
+			
+			sprintf (ss,
+					 "%d/%d %d/%d %d/%d %d/%d",
+					 (int) exif.fLensDistortInfo [0].n,
+					 (int) exif.fLensDistortInfo [0].d,
+					 (int) exif.fLensDistortInfo [1].n,
+					 (int) exif.fLensDistortInfo [1].d,
+					 (int) exif.fLensDistortInfo [2].n,
+					 (int) exif.fLensDistortInfo [2].d,
+					 (int) exif.fLensDistortInfo [3].n,
+					 (int) exif.fLensDistortInfo [3].d);
+					 
+			s.Set (ss);
+			
+			}
+			
+		SyncString (XMP_NS_AUX,
+					"LensDistortInfo",
+				    s,
+				    readOnly);
+				    
+		if (s.NotEmpty ())
+			{
+			
+			int n [4];
+			int d [4];
+			
+			if (sscanf (s.Get (),
+						"%d/%d %d/%d %d/%d %d/%d",
+						&n [0],
+						&d [0],
+						&n [1],
+						&d [1],
+						&n [2],
+						&d [2],
+						&n [3],
+						&d [3]) == 8)
+				{
+				
+				for (uint32 j = 0; j < 4; j++)
+					{
+					
+					exif.fLensDistortInfo [j] = dng_srational (n [j], d [j]);
+					
+					}
+				
+				}
+						
+			
+			}
+		
+		}
 	
 	// Flash Compensation:
 	
@@ -3554,9 +3738,23 @@ void dng_xmp::SyncExif (dng_exif &exif,
 		
 		}
 		
-	// Allow EXIF GPS to be updated via updates from XMP.
-	
-	if (doingUpdateFromXMP)
+    // For the following GPS related fields, we offer an option to prefer XMP to
+    // the EXIF values. This is to allow the host app to modify the XMP for manual
+    // geo-tagging and overwrite the EXIF values during export. It also allows the user
+    // to correct the GPS values via changes in a sidecar XMP file, without modifying
+    // the original GPS data recorded in the raw file by the camera.
+        
+    bool preferGPSFromXMP = false;
+
+    uint32 gpsSyncOption = preferNonXMP;
+        
+	#if qDNGPreferGPSMetadataFromXMP
+    preferGPSFromXMP = true;
+	#endif
+
+    // Allow EXIF GPS to be updated via updates from XMP.
+
+	if (doingUpdateFromXMP || preferGPSFromXMP)
 		{
 		
 		// Require that at least one basic GPS field exist in the
@@ -3577,6 +3775,12 @@ void dng_xmp::SyncExif (dng_exif &exif,
 			
 			exif.CopyGPSFrom (blankExif);
 			
+            if (preferGPSFromXMP) 
+                {
+                    
+                gpsSyncOption = preferXMP;
+                    
+                }
 			}
 		
 		}
@@ -3590,7 +3794,7 @@ void dng_xmp::SyncExif (dng_exif &exif,
 		if (SyncString (XMP_NS_EXIF,
 						"GPSVersionID",
 						s,
-						preferNonXMP + removable))
+						gpsSyncOption + removable))
 			{
 					
 			exif.fGPSVersionID = DecodeGPSVersion (s);
@@ -3609,7 +3813,7 @@ void dng_xmp::SyncExif (dng_exif &exif,
 		if (SyncString (XMP_NS_EXIF,
 						"GPSLatitude",
 						s,
-						preferNonXMP + removable))
+						gpsSyncOption + removable))
 			{
 			
 			DecodeGPSCoordinate (s,
@@ -3630,7 +3834,7 @@ void dng_xmp::SyncExif (dng_exif &exif,
 		if (SyncString (XMP_NS_EXIF,
 						"GPSLongitude",
 						s,
-						preferNonXMP + removable))
+						gpsSyncOption + removable))
 			{
 			
 			DecodeGPSCoordinate (s,
@@ -3669,14 +3873,14 @@ void dng_xmp::SyncExif (dng_exif &exif,
 				 "GPSAltitudeRef",
 				 altitudeRef,
 				 altitudeRef == 0xFFFFFFFF,
-				 preferNonXMP + removable);
+				 gpsSyncOption + removable);
 	
 	// GPS Altitude:
 	
 	Sync_urational (XMP_NS_EXIF,
 					"GPSAltitude",
 					altitude,
-					preferNonXMP + removable);
+					gpsSyncOption + removable);
 	
 	// GPS Date/Time:
 	
@@ -3878,6 +4082,38 @@ void dng_xmp::SyncExif (dng_exif &exif,
 	// Sync date/times.
 		
 	UpdateExifDates (exif, removeFromXMP);
+ 
+    // EXIF 2.3.1 tags.
+    
+    Sync_srational (XMP_NS_EXIFEX,
+                    "Temperature",
+                    exif.fTemperature,
+                    readOnly + removable);
+        
+    Sync_urational (XMP_NS_EXIFEX,
+                    "Humidity",
+                    exif.fHumidity,
+                    readOnly + removable);
+        
+    Sync_urational (XMP_NS_EXIFEX,
+                    "Pressure",
+                    exif.fPressure,
+                    readOnly + removable);
+        
+    Sync_srational (XMP_NS_EXIFEX,
+                    "WaterDepth",
+                    exif.fWaterDepth,
+                    readOnly + removable);
+        
+    Sync_urational (XMP_NS_EXIFEX,
+                    "Acceleration",
+                    exif.fAcceleration,
+                    readOnly + removable);
+        
+    Sync_srational (XMP_NS_EXIFEX,
+                    "CameraElevationAngle",
+                    exif.fCameraElevationAngle,
+                    readOnly + removable);
 		
 	// We are syncing EXIF and XMP, but we are not updating the
 	// NativeDigest tags.  It is better to just delete them than leave
@@ -3885,7 +4121,14 @@ void dng_xmp::SyncExif (dng_exif &exif,
 	
 	Remove (XMP_NS_EXIF, "NativeDigest");
 	Remove (XMP_NS_TIFF, "NativeDigest");
-	
+    
+    // Fake EXIF fields.
+    
+	SyncAltLangDefault (XMP_NS_DC,
+						"title",
+						exif.fTitle,
+						preferXMP);
+    
 	}
 
 /*****************************************************************************/
@@ -3928,88 +4171,204 @@ void dng_xmp::ValidateMetadata ()
 	}
 		
 /******************************************************************************/
-	
-bool dng_xmp::DateTimeIsDateOnly (const char *ns,
-							      const char *path)
-	{
-	
-	dng_string s;
-	
-	if (GetString (ns, path, s))
-		{
-		
-		uint32 len = s.Length ();
-		
-		if (len)
-			{
-		
-			for (uint32 j = 0; j < len; j++)
-				{
-				
-				if (s.Get () [j] == 'T')
-					{
-					
-					return false;
-					
-					}
-					
-				}
-				
-			return true;
-			
-			}
-		
-		}
-	
-	return false;
-	
-	}
+
+void dng_xmp::SyncExifDate (const char *ns,
+                            const char *path,
+                            dng_date_time_info &exifDateTime,
+                            bool canRemoveFromXMP,
+                            bool removeFromXMP,
+                            const dng_time_zone &fakeTimeZone)
+    {
+    
+    dng_string s;
+        
+    // Find information on XMP side.
+        
+    dng_date_time_info xmpDateTime;
+        
+    if (GetString (ns, path, s))
+        {
+        
+        if (s.IsEmpty ())
+            {
+            
+            // XMP contains an NULL string.  Clear EXIF date,
+            // and remove XMP tag if possible.
+            
+            exifDateTime.Clear ();
+            
+            if (canRemoveFromXMP && removeFromXMP)
+                {
+                Remove (ns, path);
+                }
+            
+            return;
+            
+            }
+        
+        xmpDateTime.Decode_ISO_8601 (s.Get ());
+        
+        // If the time zone matches the fake time zone,
+        // ignore it on the XMP side.
+        
+        if (fakeTimeZone.IsValid () &&
+            xmpDateTime.TimeZone ().IsValid () &&
+            xmpDateTime.TimeZone ().OffsetMinutes () == fakeTimeZone.OffsetMinutes ())
+            {
+            
+            xmpDateTime.ClearZone ();
+            
+            }
+        
+        }
+        
+    // If both are valid, we need to resolve.
+    
+    if (exifDateTime.IsValid () && xmpDateTime.IsValid ())
+        {
+
+        // Kludge: The Nikon D4 is writing date only date/times into XMP, so
+        // prefer the EXIF values if the XMP only contains a date.
+        
+        if (xmpDateTime.IsDateOnly ())
+            {
+            
+            xmpDateTime = exifDateTime;
+            
+            }
+            
+        // Kludge: Nikon sometimes writes XMP values without a time zone
+        // but the EXIF contains a valid time zone.  So in that case,
+        // prefer the EXIF.  This case also deals with sidecar files
+        // created by pre-Exif 2.3.1 aware cr_sdk versions.
+            
+        else if (exifDateTime.DateTime () == xmpDateTime.DateTime () &&
+                 exifDateTime.TimeZone ().IsValid () &&
+                 !xmpDateTime.TimeZone ().IsValid ())
+            {
+            
+            xmpDateTime = exifDateTime;
+        
+            }
+            
+        // Else assume that XMP is correct.
+        
+        else
+            {
+            
+            exifDateTime = xmpDateTime;
+            
+            }
+
+        }
+        
+    // Else just pick the valid one.
+    
+    else if (xmpDateTime.IsValid ())
+        {
+        
+        exifDateTime = xmpDateTime;
+        
+        }
+        
+    else if (exifDateTime.IsValid ())
+        {
+        
+        xmpDateTime = exifDateTime;
+        
+        }
+        
+    // Else nothing is valid.
+    
+    else
+        {
+        
+        // Remove XMP side, if any.
+        
+        Remove (ns, path);
+        
+        return;
+        
+        }
+        
+    // Should we just remove the XMP version?
+    
+    if (canRemoveFromXMP && removeFromXMP)
+        {
+        
+        Remove (ns, path);
+
+        }
+        
+    else
+        {
+        
+        s = exifDateTime.Encode_ISO_8601 ();
+
+        SetString (ns, path, s);
+        
+        }
+        
+    }
 
 /******************************************************************************/
 	
 void dng_xmp::UpdateExifDates (dng_exif &exif,
 							   bool removeFromXMP)
 	{
+ 
+    // Kludge: Early versions of the XMP library did not support date
+    // encodings without explict time zones, so software had to fill in
+    // fake time zones on the XMP side.  The usual way was to fill in
+    // local time zone for the date/time at the import location.
+    // Attempt to detect these cases and ignore the fake time zones.
+    
+    dng_time_zone fakeTimeZone;         // Initialized to invalid
+    
+    if (!exif.AtLeastVersion0231 ())    // Real time zones supported in EXIF 2.3.1
+        {
+        
+        // Look at DateTimeOriginal since it an EXIF only field (not aliased
+        // to other fields in XMP)
+        
+        dng_string s;
+        
+        if (GetString (XMP_NS_EXIF, "DateTimeOriginal", s) && s.NotEmpty ())
+            {
+            
+            dng_date_time_info xmpDateTimeOriginal;
+            
+            xmpDateTimeOriginal.Decode_ISO_8601 (s.Get ());
+            
+            // If this field has a time zone in XMP, it can only
+            // be fake.
+            
+            if (xmpDateTimeOriginal.TimeZone ().IsValid ())
+                {
+                
+                fakeTimeZone = xmpDateTimeOriginal.TimeZone ();
+                
+                }
+            
+            }
+        
+        }
 	
-	// For the following three date/time fields, we always prefer XMP to
+	// For the following three date/time fields, we generally prefer XMP to
 	// the EXIF values.  This is to allow the user to correct the date/times
 	// via changes in a sidecar XMP file, without modifying the original
 	// raw file.
-	
-	// Kludge: The Nikon D4 is writing date only date/times into XMP, so
-	// prefer the EXIF values if the XMP only contains a date.
 	
 	// Modification Date/Time:
 	// exif.fDateTime
 	// kXMP_NS_XMP:"ModifyDate" & kXMP_NS_TIFF:"DateTime" are aliased
 		
-		{
-			
-		dng_string s = exif.fDateTime.Encode_ISO_8601 ();
-		
-		bool dateOnly = DateTimeIsDateOnly (XMP_NS_TIFF, "DateTime");
-		
-		SyncString (XMP_NS_TIFF,
-					"DateTime",
-					s,
-					dateOnly ? preferNonXMP : preferXMP);
-		
-		if (s.NotEmpty ())
-			{
-			
-			exif.fDateTime.Decode_ISO_8601 (s.Get ());
-			
-			// Round trip again in case we need to add a fake time zone.
-			
-			s = exif.fDateTime.Encode_ISO_8601 ();
-			
-			SetString (XMP_NS_TIFF,
-					   "DateTime",
-					   s);
-			
-			}
-			
-		}
+    SyncExifDate (XMP_NS_TIFF,
+                  "DateTime",
+                  exif.fDateTime,
+                  false,                    // Cannot remove because aliased
+                  removeFromXMP,
+                  fakeTimeZone);
 		
 	// Original Date/Time:
 	// exif.fDateTimeOriginal
@@ -4019,80 +4378,70 @@ void dng_xmp::UpdateExifDates (dng_exif &exif,
 	
 		{
 			
-		dng_string s = exif.fDateTimeOriginal.Encode_ISO_8601 ();
-		
-		bool dateOnly = DateTimeIsDateOnly (XMP_NS_EXIF, "DateTimeOriginal");
-		
-		SyncString (XMP_NS_EXIF,
-					"DateTimeOriginal",
-					s,
-					dateOnly ? preferNonXMP : preferXMP);
-		
-		if (s.NotEmpty ())
-			{
-			
-			exif.fDateTimeOriginal.Decode_ISO_8601 (s.Get ());
-			
-			// Round trip again in case we need to add a fake time zone.
-			
-			s = exif.fDateTimeOriginal.Encode_ISO_8601 ();
-			
-			SetString (XMP_NS_EXIF,
-					   "DateTimeOriginal",
-					   s);
-			
-			}
-			
-		// Sync the IPTC value to the EXIF value if only the EXIF
-		// value exists.
-		
-		if (s.NotEmpty () && !Exists (XMP_NS_PHOTOSHOP, "DateCreated"))
-			{
-			
-			SetString (XMP_NS_PHOTOSHOP, "DateCreated", s);
-			
-			}
-			
-		if (removeFromXMP)
-			{
-			
-			Remove (XMP_NS_EXIF, "DateTimeOriginal");
-			
-			}
-			
+        SyncExifDate (XMP_NS_EXIF,
+                      "DateTimeOriginal",
+                      exif.fDateTimeOriginal,
+                      true,
+                      removeFromXMP,
+                      fakeTimeZone);
+            
+        // Sync the IPTC value to the EXIF value if only the EXIF
+        // value exists.
+        
+        if (exif.fDateTimeOriginal.IsValid ())
+            {
+            
+            // See if the fake time zone was cloned into DateCreated
+            // field.
+            
+            bool forceUpdate = false;
+            
+            if (fakeTimeZone.IsValid ())
+                {
+                
+                dng_string s;
+                
+                if (GetString (XMP_NS_PHOTOSHOP, "DateCreated", s) && s.NotEmpty ())
+                    {
+                    
+                    dng_date_time_info info;
+                    
+                    info.Decode_ISO_8601 (s.Get ());
+                    
+                    if (info.DateTime () == exif.fDateTimeOriginal.DateTime ())
+                        {
+                        
+                        forceUpdate = true;
+                        
+                        }
+                    
+                    }
+                
+                }
+            
+            if (!Exists (XMP_NS_PHOTOSHOP, "DateCreated") || forceUpdate)
+                {
+                
+                dng_string s = exif.fDateTimeOriginal.Encode_ISO_8601 ();
+                
+                SetString (XMP_NS_PHOTOSHOP, "DateCreated", s);
+                
+                }
+                
+            }
+            
 		}
 		
 	// Date Time Digitized:
 	// XMP_NS_EXIF:"DateTimeDigitized" & kXMP_NS_XMP:"CreateDate" are aliased
 	
-		{
-			
-		dng_string s = exif.fDateTimeDigitized.Encode_ISO_8601 ();
-		
-		bool dateOnly = DateTimeIsDateOnly (XMP_NS_EXIF, "DateTimeDigitized");
-		
-		SyncString (XMP_NS_EXIF,
-					"DateTimeDigitized",
-					s,
-					dateOnly ? preferNonXMP : preferXMP);
-			
-		if (s.NotEmpty ())
-			{
-				
-			exif.fDateTimeDigitized.Decode_ISO_8601 (s.Get ());
-							
-			// Round trip again in case we need to add a fake time zone.
-			
-			s = exif.fDateTimeDigitized.Encode_ISO_8601 ();
-			
-			SetString (XMP_NS_EXIF,
-					   "DateTimeDigitized",
-					   s);
-			
-			}
-			
-		}
-		
+    SyncExifDate (XMP_NS_EXIF,
+                  "DateTimeDigitized",
+                  exif.fDateTimeDigitized,
+                  false,                    // Cannot remove because aliased
+                  removeFromXMP,
+                  fakeTimeZone);
+  
 	}
 
 /******************************************************************************/
@@ -4379,32 +4728,32 @@ void dng_xmp::AppendArrayItem (const char *ns,
 
 /*****************************************************************************/
 
-void dng_xmp::DocOpsOpenXMP (const char *srcMIMI)
+void dng_xmp::DocOpsOpenXMP (const char *srcMIME)
 	{
 	
-	fSDK->DocOpsOpenXMP (srcMIMI);
+	fSDK->DocOpsOpenXMP (srcMIME);
 	
 	}
 
 /*****************************************************************************/
 
-void dng_xmp::DocOpsPrepareForSave (const char *srcMIMI,
-									const char *dstMIMI,
+void dng_xmp::DocOpsPrepareForSave (const char *srcMIME,
+									const char *dstMIME,
 									bool newPath)
 	{
 	
-	fSDK->DocOpsPrepareForSave (srcMIMI,
-								dstMIMI,
+	fSDK->DocOpsPrepareForSave (srcMIME,
+								dstMIME,
 								newPath);
 	
 	}
 
 /*****************************************************************************/
 
-void dng_xmp::DocOpsUpdateMetadata (const char *srcMIMI)
+void dng_xmp::DocOpsUpdateMetadata (const char *srcMIME)
 	{
 	
-	fSDK->DocOpsUpdateMetadata (srcMIMI);
+	fSDK->DocOpsUpdateMetadata (srcMIME);
 	
 	}
 

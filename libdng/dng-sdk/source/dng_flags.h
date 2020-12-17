@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006-2012 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_flags.h#5 $ */ 
-/* $DateTime: 2012/07/31 22:04:34 $ */
-/* $Change: 840853 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Conditional compilation flags for DNG SDK.
@@ -30,22 +25,25 @@
 /// \def qWinOS 
 /// 1 if compiling for Windows.
 
-// Make sure qMacOS and qWinOS are defined.
+// Make sure a platform is defined
 
-#if !defined(qMacOS) || !defined(qWinOS)
+#if !(defined(qMacOS) || defined(qWinOS) || defined(qAndroid) || defined(qiPhone) || defined(qLinux))
 #include "RawEnvironment.h"
 #endif
 
-#if !defined(qMacOS) || !defined(qWinOS)
+// This requires a force include or compiler define.  These are the unique platforms.
+
+#if !(defined(qMacOS) || defined(qWinOS) || defined(qAndroid) || defined(qiPhone) || defined(qLinux))
 #error Unable to figure out platform
 #endif
 
 /*****************************************************************************/
 
 // Platforms.
+// Zeros out any undefined platforms, so that #if can be used in place of #ifdef.
 
-#ifndef qImagecore
-#define qImagecore 0
+#ifndef qMacOS
+#define qMacOS 0
 #endif
 
 #ifndef qiPhone
@@ -60,8 +58,56 @@
 #define qAndroid 0
 #endif
 
-#ifndef qAndroidArm7
-#define qAndroidArm7 0
+#ifndef qWinOS
+#define qWinOS 0
+#endif
+
+#ifndef qWinRT
+#define qWinRT 0
+#endif
+
+#ifndef qLinux
+#define qLinux 0
+#endif
+
+#ifndef qWeb
+#define qWeb 0
+#endif
+
+/*****************************************************************************/
+
+#if qiPhoneSimulator
+#if !qiPhone
+#error "qiPhoneSimulator set and not qiPhone"
+#endif
+#endif
+
+#if qWinRT
+#if !qWinOS
+#error "qWinRT set but not qWinOS"
+#endif
+#endif
+
+/*****************************************************************************/
+
+// arm and neon support
+
+// arm detect (apple vs. win)
+#if defined(__arm__) || defined(__arm64__) || defined(_M_ARM)
+#define qARM 1
+#endif
+
+// arm_neon detect
+#if defined(__ARM_NEON__) || defined(_M_ARM)
+#define qARMNeon 1
+#endif
+
+#ifndef qARM 
+#define qARM 0
+#endif
+
+#ifndef qARMNeon
+#define qARMNeon 0
 #endif
 
 /*****************************************************************************/
@@ -95,6 +141,37 @@
 #else
 #define qDNGDebug 0
 
+#endif
+#endif
+
+/*****************************************************************************/
+// Support Intel Thread Building Blocks (TBB)?
+// 
+// This flag needs to be configured via the project, because there are sources
+// outside the cr_sdk (such as the CTJPEG and ACE libs) that need to use the
+// same flag to determine whether to use TBB or not.
+// 
+// By default, configure to 0 (disabled).
+
+#ifndef qCRSupportTBB
+#define qCRSupportTBB 0
+#endif
+
+#if qCRSupportTBB
+#ifndef TBB_DEPRECATED
+#define TBB_DEPRECATED 0
+#endif
+#endif
+
+// This is not really a switch, but rather a shorthand for determining whether
+// or not we're building a particular translation unit (source file) using the
+// Intel Compiler.
+
+#ifndef qDNGIntelCompiler
+#if defined(__INTEL_COMPILER)
+#define qDNGIntelCompiler (__INTEL_COMPILER >= 1700)
+#else
+#define qDNGIntelCompiler 0
 #endif
 #endif
 
@@ -174,6 +251,14 @@
 #endif
 #endif
 
+#elif qLinux
+
+#ifdef __LP64__
+#if    __LP64__
+#define qDNG64Bit 1
+#endif
+#endif
+
 #endif
 
 #ifndef qDNG64Bit
@@ -221,17 +306,8 @@
 
 /*****************************************************************************/
 
-/// \def qDNGCodec 
-/// 1 to build the Windows Imaging Component Codec (e.g. for Vista).
-
-#ifndef qDNGCodec
-#define qDNGCodec 0
-#endif
-
-/*****************************************************************************/
-
-// Experimental features -- work in progress for Lightroom 4.0 and Camera Raw 7.0.
-// Turn this off for Lightroom 3.x & Camera Raw 6.x dot releases.
+// Experimental features -- work in progress for Lightroom and Camera Raw
+// major releases. Turn this off for Lightroom & Camera Raw dot releases.
 
 #ifndef qDNGExperimental
 #define qDNGExperimental 1
@@ -243,7 +319,7 @@
 /// 1 to use XMPFiles.
 
 #ifndef qDNGXMPFiles
-#define qDNGXMPFiles 0
+#define qDNGXMPFiles 1
 #endif
 
 /*****************************************************************************/
@@ -252,7 +328,7 @@
 /// 1 to use XMPDocOps.
 
 #ifndef qDNGXMPDocOps
-#define qDNGXMPDocOps 0 // FORK: (!qDNGValidateTarget)
+#define qDNGXMPDocOps (!qDNGValidateTarget)
 #endif
 
 /*****************************************************************************/
@@ -261,7 +337,62 @@
 /// 1 to use open-source libjpeg for lossy jpeg processing.
 
 #ifndef qDNGUseLibJPEG
-#define qDNGUseLibJPEG 1 // FORK: qDNGValidateTarget
+#define qDNGUseLibJPEG qDNGValidateTarget
+#endif
+
+/*****************************************************************************/
+
+#ifndef qDNGAVXSupport
+#define qDNGAVXSupport ((qMacOS || qWinOS) && qDNG64Bit && !qARM && 1)
+#endif
+
+#if qDNGAVXSupport && !(qDNG64Bit && !qARM)
+#error AVX support is enabled when 64-bit support is not or ARM is
+#endif
+
+/*****************************************************************************/
+
+#ifndef qDNGSupportVC5
+#define qDNGSupportVC5 (1)
+#endif
+
+/*****************************************************************************/
+
+/// \def qDNGUsingSanitizer
+/// Set to 1 when using a Sanitizer tool.
+
+#ifndef qDNGUsingSanitizer
+#define qDNGUsingSanitizer (0)
+#endif
+
+/*****************************************************************************/
+
+#ifndef DNG_ATTRIB_NO_SANITIZE
+#if qDNGUsingSanitizer && defined(__clang__)
+#define DNG_ATTRIB_NO_SANITIZE(type) __attribute__((no_sanitize(type)))
+#else
+#define DNG_ATTRIB_NO_SANITIZE(type)
+#endif
+#endif
+
+/*****************************************************************************/
+
+/// \def qDNGDepthSupport
+/// 1 to add support for depth maps in DNG format.
+/// Deprecated 2018-09-19.
+
+#ifdef __cplusplus
+#define qDNGDepthSupport #error
+#endif
+
+/*****************************************************************************/
+
+/// \def qDNGPreserveBlackPoint
+/// 1 to add support for non-zero black point in early raw pipeline.
+/// Deprecated 2018-09-19.
+
+#ifdef __cplusplus
+#define qDNGPreserveBlackPoint #error
 #endif
 
 /*****************************************************************************/

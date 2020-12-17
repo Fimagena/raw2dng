@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_temperature.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
 
 #include "dng_temperature.h"
 
@@ -36,7 +31,7 @@ struct ruvt
 	
 static const ruvt kTempTable [] =
 	{
-	{   0, 0.18006, 0.26352, -0.24341 },
+	{	0, 0.18006, 0.26352, -0.24341 },
 	{  10, 0.18066, 0.26589, -0.25479 },
 	{  20, 0.18133, 0.26846, -0.26876 },
 	{  30, 0.18208, 0.27119, -0.28539 },
@@ -134,15 +129,15 @@ void dng_temperature::Set_xy_coord (const dng_xy_coord &xy)
 			// Interpolate the temperature.
 			
 			fTemperature = 1.0E6 / (kTempTable [index - 1] . r * f +
-								    kTempTable [index    ] . r * (1.0 - f));
+									kTempTable [index	 ] . r * (1.0 - f));
 								
 			// Find delta from black body point to test coordinate.
 			
 			uu = u - (kTempTable [index - 1] . u * f +
-					  kTempTable [index    ] . u * (1.0 - f));
+					  kTempTable [index	   ] . u * (1.0 - f));
 					  
 			vv = v - (kTempTable [index - 1] . v * f +
-					  kTempTable [index    ] . v * (1.0 - f));
+					  kTempTable [index	   ] . v * (1.0 - f));
 			
 			// Interpolate vectors along slope.
 			
@@ -203,10 +198,10 @@ dng_xy_coord dng_temperature::Get_xy_coord () const
 					   
 			// Interpolate the black body coordinates.
 			
-			real64 u = kTempTable [index    ] . u * f +
+			real64 u = kTempTable [index	] . u * f +
 					   kTempTable [index + 1] . u * (1.0 - f);
 					   
-			real64 v = kTempTable [index    ] . v * f +
+			real64 v = kTempTable [index	] . v * f +
 					   kTempTable [index + 1] . v * (1.0 - f);
 					   
 			// Find vectors along slope for each line.
@@ -244,7 +239,7 @@ dng_xy_coord dng_temperature::Get_xy_coord () const
 			// Convert to xy coordinates.
 			
 			result.x = 1.5 * u / (u - 4.0 * v + 2.0);
-			result.y =       v / (u - 4.0 * v + 2.0);
+			result.y =		 v / (u - 4.0 * v + 2.0);
 	
 			break;
 			

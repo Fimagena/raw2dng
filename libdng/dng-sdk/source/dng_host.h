@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006-2012 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_host.h#2 $ */ 
-/* $DateTime: 2012/06/14 20:24:41 $ */
-/* $Change: 835078 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Class definition for dng_host, initial point of contact and control between
@@ -27,6 +22,7 @@
 #include "dng_classes.h"
 #include "dng_errors.h"
 #include "dng_types.h"
+#include "dng_uncopyable.h"
 
 /*****************************************************************************/
 
@@ -47,7 +43,7 @@
 /// establishing mutual exclusion for read/write access to a single dng_host 
 /// object if it is used in multiple threads.)
 
-class dng_host
+class dng_host: private dng_uncopyable
 	{
 	
 	private:
@@ -104,6 +100,15 @@ class dng_host
 		// Keep the original raw file data block?
 		
 		bool fKeepOriginalFile;
+
+		// Is this host being used to perform a negative read for fast
+		// conversion to DNG? 
+
+		bool fForFastSaveToDNG;
+
+		uint32 fFastSaveToDNGSize;
+
+		bool fPreserveStage2;
 	
 	public:
 	
@@ -254,6 +259,30 @@ class dng_host
 			{
 			return fMaximumSize;
 			}
+
+		/// Setter for the perform fast save to DNG.
+		/// \param flag True if the host is being used to perform a negative
+		/// read for fast conversion to DNG, false otherwise.
+
+		void SetForFastSaveToDNG (bool flag,
+								  uint32 size)
+			{
+			fForFastSaveToDNG = flag;
+			fFastSaveToDNGSize = size;
+			}
+
+		/// Getter for the Boolean value that indicates whether this host is
+		/// being used to perform a negative read for fast conversion to DNG.
+		
+		bool ForFastSaveToDNG () const
+			{
+			return fForFastSaveToDNG;
+			}
+
+		uint32 FastSaveToDNGSize () const
+			{
+			return fFastSaveToDNGSize;
+			}
 			
 		/// Setter for the cropping factor.
 		/// \param cropFactor Fraction of image to be used after crop.
@@ -331,7 +360,8 @@ class dng_host
 		/// \param area Rectangle over which to perform image processing task.
 
 		virtual void PerformAreaTask (dng_area_task &task,
-									  const dng_rect &area);
+									  const dng_rect &area,
+                                      dng_area_task_progress *progress = NULL);
 									  
 		/// How many multiprocessing threads does PerformAreaTask use?
 		/// Default implementation always returns 1 since it is single threaded.
@@ -388,14 +418,22 @@ class dng_host
 		
 		virtual void ResampleImage (const dng_image &srcImage,
 									dng_image &dstImage);
-		
-	private:
-	
-		// Hidden copy constructor and assignment operator.
-	
-		dng_host (const dng_host &host);
-		
-		dng_host & operator= (const dng_host &host);
+
+		/// Getter for flag determining whether we should preserve the stage 2
+		/// image after building the stage 3 image.
+
+		bool WantsPreserveStage2 () const
+			{
+			return fPreserveStage2;
+			}
+
+		/// Setter for flag determining whether we should preserve the stage 2
+		/// image after building the stage 3 image.
+
+		void SetWantsPreserveStage2 (bool flag)
+			{
+			fPreserveStage2 = flag;
+			}
 		
 	};
 	

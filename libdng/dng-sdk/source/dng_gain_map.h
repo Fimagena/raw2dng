@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2008-2009 Adobe Systems Incorporated
+// Copyright 2008-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_gain_map.h#2 $ */ 
-/* $DateTime: 2012/07/31 22:04:34 $ */
-/* $Change: 840853 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Opcode to fix 2D uniformity defects, such as shading.
@@ -25,13 +20,14 @@
 #include "dng_memory.h"
 #include "dng_misc_opcodes.h"
 #include "dng_tag_types.h"
+#include "dng_uncopyable.h"
 
 /*****************************************************************************/
 
 /// \brief Holds a discrete (i.e., sampled) 2D representation of a gain map. This is
 /// effectively an image containing scale factors. 
 
-class dng_gain_map
+class dng_gain_map: private dng_uncopyable
 	{
 	
 	private:
@@ -138,14 +134,6 @@ class dng_gain_map
 		static dng_gain_map * GetStream (dng_host &host,
 										 dng_stream &stream);
 
-	private:
-	
-		// Hidden copy constructor and assignment operator.
-		
-		dng_gain_map (const dng_gain_map &map);
-		
-		dng_gain_map & operator= (const dng_gain_map &map);
-							
 	};
 
 /*****************************************************************************/
@@ -153,7 +141,8 @@ class dng_gain_map
 /// \brief An opcode to fix 2D spatially-varying light falloff or color casts (i.e.,
 /// uniformity issues). This is commonly due to shading.
 
-class dng_opcode_GainMap: public dng_inplace_opcode
+class dng_opcode_GainMap: public dng_inplace_opcode,
+						  private dng_uncopyable
 	{
 	
 	private:
@@ -202,14 +191,6 @@ class dng_opcode_GainMap: public dng_inplace_opcode
 								  const dng_rect &dstArea,
 								  const dng_rect &imageBounds);
 	
-	private:
-	
-		// Hidden copy constructor and assignment operator.
-		
-		dng_opcode_GainMap (const dng_opcode_GainMap &opcode);
-		
-		dng_opcode_GainMap & operator= (const dng_opcode_GainMap &opcode);
-							
 	};
 	
 /*****************************************************************************/

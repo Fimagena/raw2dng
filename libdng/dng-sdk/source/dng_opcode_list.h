@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2008-2009 Adobe Systems Incorporated
+// Copyright 2008-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_opcode_list.h#2 $ */ 
-/* $DateTime: 2012/07/31 22:04:34 $ */
-/* $Change: 840853 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * List of opcodes.
@@ -25,6 +20,7 @@
 #include "dng_auto_ptr.h"
 #include "dng_classes.h"
 #include "dng_opcodes.h"
+#include "dng_uncopyable.h"
 
 #include <vector>
 
@@ -32,12 +28,12 @@
 
 /// A list of opcodes.
 
-class dng_opcode_list
+class dng_opcode_list: private dng_uncopyable
 	{
 	
 	private:
 	
-		std::vector<dng_opcode *> fList;
+		dng_std_vector<dng_opcode *> fList;
 		
 		bool fAlwaysApply;
 		
@@ -148,14 +144,6 @@ class dng_opcode_list
 					uint32 byteCount,
 					uint64 streamOffset);
 		
-	private:
-	
-		// Hidden copy constructor and assignment operator.
-		
-		dng_opcode_list (const dng_opcode_list &list);
-		
-		dng_opcode_list & operator= (const dng_opcode_list &list);
-	
 	};
 
 /*****************************************************************************/

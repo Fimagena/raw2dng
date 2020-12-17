@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006-2011 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_linearization_info.h#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Support for linearization table and black level tags.
@@ -119,10 +114,12 @@ class dng_linearization_info
 		
 		/// Convert raw data from in-file format to a true linear image using linearization data from DNG.
 		/// \param host Used to allocate buffers, check for aborts, and post progress updates.
+        /// \param negative Used to remember preserved black point.
 		/// \param srcImage Input pre-linearization RAW samples.
 		/// \param dstImage Output linearized image.
 
 		virtual void Linearize (dng_host &host,
+                                dng_negative &negative,
 								const dng_image &srcImage,
 								dng_image &dstImage);
 

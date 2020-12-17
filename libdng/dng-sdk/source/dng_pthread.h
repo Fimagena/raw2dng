@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2002-2008 Adobe Systems Incorporated
+// Copyright 2002-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_pthread.h#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #ifndef __dng_pthread__
@@ -137,18 +130,7 @@ int dng_pthread_rwlock_tryrdlock(dng_pthread_rwlock_t * rwlock);
 int dng_pthread_rwlock_trywrlock(dng_pthread_rwlock_t * rwlock);
 int dng_pthread_rwlock_unlock(dng_pthread_rwlock_t * rwlock);
 int dng_pthread_rwlock_wrlock(dng_pthread_rwlock_t * rwlock);
-
-typedef struct dng_pthread_rwlock_impl *dng_pthread_rwlock_t;
-typedef void *pthread_rwlockattr_t;
-
-int dng_pthread_rwlock_destroy(dng_pthread_rwlock_t * rwlock);
-int dng_pthread_rwlock_init(dng_pthread_rwlock_t * rwlock, const pthread_rwlockattr_t * attrs);
-int dng_pthread_rwlock_rdlock(dng_pthread_rwlock_t * rwlock);
-int dng_pthread_rwlock_tryrdlock(dng_pthread_rwlock_t * rwlock);
-int dng_pthread_rwlock_trywrlock(dng_pthread_rwlock_t * rwlock);
-int dng_pthread_rwlock_unlock(dng_pthread_rwlock_t * rwlock);
-int dng_pthread_rwlock_wrlock(dng_pthread_rwlock_t * rwlock);
-
+    
 // dng_pthread may maintain per-thread global state. This routine frees that global state.
 // there is no need to call this for threads created by dng_pthread and one can call
 // dng_pthread routines of a thread after dng_pthread_disassociate as the global state will
@@ -179,7 +161,9 @@ void dng_pthread_terminate();
 #undef PTHREAD_ONCE_INIT
 #define PTHREAD_ONCE_INIT DNG_PTHREAD_ONCE_INIT
 
+#if _MSC_VER < 1900
 #define timespec dng_timespec
+#endif
 
 /* If it is defined on Windows, it probably has the wrong value... */
 #if defined(WIN32) || !defined(ETIMEDOUT)

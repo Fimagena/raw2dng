@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2008-2009 Adobe Systems Incorporated
+// Copyright 2008-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_misc_opcodes.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_misc_opcodes.h"
@@ -20,7 +13,9 @@
 #include "dng_globals.h"
 #include "dng_host.h"
 #include "dng_image.h"
+#include "dng_negative.h"
 #include "dng_rect.h"
+#include "dng_safe_arithmetic.h"
 #include "dng_stream.h"
 #include "dng_tag_values.h"
 
@@ -137,10 +132,41 @@ void dng_area_spec::GetData (dng_stream &stream)
 		{
 		ThrowBadFormat ();
 		}
-		
-	if (fArea.IsEmpty () && (fRowPitch != 1 || fColPitch != 1))
+	
+	if (fRowPitch >= fArea.H () || fColPitch >= fArea.W ())
 		{
-		ThrowBadFormat ();
+
+		DNG_REPORT ("Bad rowPitch or colPitch in dng_area_spec::GetData");
+		
+		fRowPitch = Min_uint32 (fRowPitch, fArea.H ());
+		fColPitch = Min_uint32 (fColPitch, fArea.W ());
+
+		}
+		
+	if (fArea.IsEmpty ())
+		{
+
+		if (fRowPitch != 1 || fColPitch != 1)
+			{
+			ThrowBadFormat ();
+			}
+
+		}
+		
+	else
+		{
+
+		int32 width	 = 0;
+		int32 height = 0;
+
+		if (!SafeInt32Sub (fArea.b, fArea.t, &height) ||
+			!SafeInt32Sub (fArea.r, fArea.l, &width)  ||
+			fRowPitch > static_cast<uint32> (height)  ||
+			fColPitch > static_cast<uint32> (width))
+			{
+			ThrowBadFormat ();
+			}
+
 		}
 		
 	#if qDNGValidate
@@ -233,6 +259,8 @@ dng_opcode_MapTable::dng_opcode_MapTable (dng_host &host,
 	,	fAreaSpec (areaSpec)
 	,	fTable    ()
 	,	fCount    (count)
+
+    ,   fBlackAdjustedTable ()
 	
 	{
 	
@@ -264,6 +292,8 @@ dng_opcode_MapTable::dng_opcode_MapTable (dng_host &host,
 	,	fTable    ()
 	,	fCount    (0)
 	
+    ,   fBlackAdjustedTable ()
+
 	{
 	
 	uint32 dataSize = stream.Get_uint32 ();
@@ -369,7 +399,64 @@ dng_rect dng_opcode_MapTable::ModifiedBounds (const dng_rect &imageBounds)
 	return fAreaSpec.Overlap (imageBounds);
 	
 	}
-	
+
+/*****************************************************************************/
+
+void dng_opcode_MapTable::Prepare (dng_negative &negative,
+                                   uint32 /* threadCount */,
+                                   const dng_point & /* tileSize */,
+                                   const dng_rect & /* imageBounds */,
+                                   uint32 /* imagePlanes */,
+                                   uint32 /* bufferPixelType */,
+                                   dng_memory_allocator &allocator)
+    {
+    
+    fBlackAdjustedTable.Reset ();
+    
+    int32 blackLevel = negative.Stage3BlackLevel ();
+        
+    if (Stage () >= 2 && blackLevel != 0)
+        {
+        
+        fBlackAdjustedTable.Reset (allocator.Allocate (0x10000 * sizeof (uint16)));
+        
+        const uint16 *srcTable = fTable->Buffer_uint16 ();
+        
+        uint16 *dstTable = fBlackAdjustedTable->Buffer_uint16 ();
+        
+        real64 srcScale = 65535.0 / (65535.0 - blackLevel);
+        
+        real64 dstScale = (65535.0 - blackLevel) / 65535.0;
+        
+        for (int32 index = 0; index < 0x10000; index++)
+            {
+            
+            real64 x = (index - blackLevel) * srcScale;
+            
+            real64 y;
+            
+            if (x < 0.0)
+                {
+                
+                y = srcTable [0] * 2.0 - (real64) srcTable [Round_uint32 (-x)];
+                
+                }
+                
+            else
+                {
+                
+                y = srcTable [Round_uint32 (x)];
+                
+                }
+                
+            dstTable [index] = Pin_uint16 (Round_int32 (y * dstScale) + blackLevel);
+            
+            }
+        
+        }
+    
+    }
+
 /*****************************************************************************/
 
 void dng_opcode_MapTable::ProcessArea (dng_negative & /* negative */,
@@ -383,6 +470,9 @@ void dng_opcode_MapTable::ProcessArea (dng_negative & /* negative */,
 	
 	if (overlap.NotEmpty ())
 		{
+  
+        const uint16 *table = fBlackAdjustedTable.Get () ? fBlackAdjustedTable->Buffer_uint16 ()
+                                                         : fTable             ->Buffer_uint16 ();
 		
 		for (uint32 plane = fAreaSpec.Plane ();
 			 plane < fAreaSpec.Plane () + fAreaSpec.Planes () &&
@@ -397,7 +487,7 @@ void dng_opcode_MapTable::ProcessArea (dng_negative & /* negative */,
 						 0,
 						 fAreaSpec.RowPitch () * buffer.RowStep (),
 						 fAreaSpec.ColPitch (),
-						 fTable->Buffer_uint16 ());
+						 table);
 			
 			}
 		
@@ -591,7 +681,7 @@ dng_rect dng_opcode_MapPolynomial::ModifiedBounds (const dng_rect &imageBounds)
 								  
 /*****************************************************************************/
 
-void dng_opcode_MapPolynomial::ProcessArea (dng_negative & /* negative */,
+void dng_opcode_MapPolynomial::ProcessArea (dng_negative &negative,
 											uint32 /* threadIndex */,
 											dng_pixel_buffer &buffer,
 											const dng_rect &dstArea,
@@ -602,9 +692,10 @@ void dng_opcode_MapPolynomial::ProcessArea (dng_negative & /* negative */,
 	
 	if (overlap.NotEmpty ())
 		{
+  
+        uint16 blackLevel = Stage () >= 2 ? negative.Stage3BlackLevel () : 0;
 		
-		uint32 cols = overlap.W ();
-		
+		uint32 rowPitch = fAreaSpec.RowPitch ();
 		uint32 colPitch = fAreaSpec.ColPitch ();
 		
 		for (uint32 plane = fAreaSpec.Plane ();
@@ -612,191 +703,46 @@ void dng_opcode_MapPolynomial::ProcessArea (dng_negative & /* negative */,
 			 plane < buffer.Planes ();
 			 plane++)
 			{
-			
-			for (int32 row = overlap.t; row < overlap.b; row += fAreaSpec.RowPitch ())
-				{
-				
-				real32 *dPtr = buffer.DirtyPixel_real32 (row, overlap.l, plane);
-				
-				switch (fDegree)
-					{
-					
-					case 0:
-						{
-						
-						real32 y = Pin_real32 (0.0f,
-											   fCoefficient32 [0],
-											   1.0f);
-						
-						for (uint32 col = 0; col < cols; col += colPitch)
-							{
-							
-							dPtr [col] = y;
-							
-							}
-							
-						break;
-					
-						}
 
-					case 1:
-						{
-						
-						real32 c0 = fCoefficient32 [0];
-						real32 c1 = fCoefficient32 [1];
-						
-						if (c0 == 0.0f)
-							{
-							
-							if (c1 > 0.0f)
-								{
-						
-								for (uint32 col = 0; col < cols; col += colPitch)
-									{
-									
-									real32 x = dPtr [col];
-									
-									real32 y = c1 * x;
-											   
-									dPtr [col] = Min_real32 (y, 1.0f);
-									
-									}
-								
-								}
-								
-							else
-								{
-						
-								for (uint32 col = 0; col < cols; col += colPitch)
-									{
-									
-									dPtr [col] = 0.0f;
-									
-									}
-								
-								}
-							
-							}
-							
-						else
-							{
-						
-							for (uint32 col = 0; col < cols; col += colPitch)
-								{
-								
-								real32 x = dPtr [col];
-								
-								real32 y = c0 +
-										   c1 * x;
-										   
-								dPtr [col] = Pin_real32 (0.0f, y, 1.0f);
-								
-								}
-								
-							}
-							
-						break;
-					
-						}
-					
-					case 2:
-						{
-						
-						for (uint32 col = 0; col < cols; col += colPitch)
-							{
-							
-							real32 x = dPtr [col];
-							
-							real32 y =  fCoefficient32 [0] + x *
-									   (fCoefficient32 [1] + x *
-									   (fCoefficient32 [2]));
-									   
-							dPtr [col] = Pin_real32 (0.0f, y, 1.0f);
-							
-							}
-							
-						break;
-					
-						}
-					
-					case 3:
-						{
-						
-						for (uint32 col = 0; col < cols; col += colPitch)
-							{
-							
-							real32 x = dPtr [col];
-							
-							real32 y =  fCoefficient32 [0] + x *
-									   (fCoefficient32 [1] + x *
-									   (fCoefficient32 [2] + x *
-									   (fCoefficient32 [3])));
-									   
-							dPtr [col] = Pin_real32 (0.0f, y, 1.0f);
-							
-							}
-							
-						break;
-					
-						}
-					
-					case 4:
-						{
-						
-						for (uint32 col = 0; col < cols; col += colPitch)
-							{
-							
-							real32 x = dPtr [col];
-							
-							real32 y =  fCoefficient32 [0] + x *
-									   (fCoefficient32 [1] + x *
-									   (fCoefficient32 [2] + x *
-									   (fCoefficient32 [3] + x *
-									   (fCoefficient32 [4]))));
-									   
-							dPtr [col] = Pin_real32 (0.0f, y, 1.0f);
-							
-							}
-							
-						break;
-					
-						}
-																						
-					default:
-						{
-						
-						for (uint32 col = 0; col < cols; col += colPitch)
-							{
-							
-							real32 x = dPtr [col];
-							
-							real32 y = fCoefficient32 [0];
-							
-							real32 xx = x;
-							
-							for (uint32 j = 1; j <= fDegree; j++)
-								{
-								
-								y += fCoefficient32 [j] * xx;
-								
-								xx *= x;
-								
-								}
-																   
-							dPtr [col] = Pin_real32 (0.0f, y, 1.0f);
-							
-							}
-							
-						}
-											
-					}
-				
-				}
+			DoProcess (buffer,
+					   overlap,
+					   plane,
+					   rowPitch,
+					   colPitch,
+					   fCoefficient32, 
+					   fDegree,
+                       blackLevel);
 			
 			}
 		
 		}
 	
+	}
+
+/*****************************************************************************/
+
+void dng_opcode_MapPolynomial::DoProcess (dng_pixel_buffer &buffer,
+										  const dng_rect &area,
+										  const uint32 plane,
+										  const uint32 rowPitch,
+										  const uint32 colPitch,
+										  const real32 *coefficients,
+										  const uint32 degree,
+                                          uint16 blackLevel) const
+	{
+
+	DoBaselineMapPoly32 (buffer.DirtyPixel_real32 (area.t,
+												   area.l,
+												   plane),
+						 buffer.RowStep () * (int32) rowPitch,
+						 area.H (),
+						 area.W (),
+						 rowPitch,
+						 colPitch,
+						 coefficients,
+						 degree,
+                         blackLevel);
+
 	}
 
 /*****************************************************************************/
@@ -837,9 +783,8 @@ dng_opcode_DeltaPerRow::dng_opcode_DeltaPerRow (dng_host &host,
 	
 	fAreaSpec.GetData (stream);
 	
-	uint32 deltas = (fAreaSpec.Area ().H () +
-					 fAreaSpec.RowPitch () - 1) /
-					 fAreaSpec.RowPitch ();
+	uint32 deltas = SafeUint32DivideUp (fAreaSpec.Area ().H (),
+										fAreaSpec.RowPitch ());
 					 
 	if (deltas != stream.Get_uint32 ())
 		{
@@ -851,7 +796,9 @@ dng_opcode_DeltaPerRow::dng_opcode_DeltaPerRow (dng_host &host,
 		ThrowBadFormat ();
 		}
 		
-	fTable.Reset (host.Allocate (deltas * (uint32) sizeof (real32)));
+	fTable.Reset (host.Allocate
+				  (SafeUint32Mult (deltas,
+								   static_cast<uint32> (sizeof (real32)))));
 	
 	real32 *table = fTable->Buffer_real32 ();
 	
@@ -888,9 +835,8 @@ dng_opcode_DeltaPerRow::dng_opcode_DeltaPerRow (dng_host &host,
 void dng_opcode_DeltaPerRow::PutData (dng_stream &stream) const
 	{
 	
-	uint32 deltas = (fAreaSpec.Area ().H () +
-					 fAreaSpec.RowPitch () - 1) /
-					 fAreaSpec.RowPitch ();
+	uint32 deltas = SafeUint32DivideUp (fAreaSpec.Area ().H (),
+										fAreaSpec.RowPitch ());
 	
 	stream.Put_uint32 (dng_area_spec::kDataSize + 4 + deltas * 4);
 	
@@ -954,7 +900,7 @@ dng_rect dng_opcode_DeltaPerRow::ModifiedBounds (const dng_rect &imageBounds)
 
 /*****************************************************************************/
 
-void dng_opcode_DeltaPerRow::ProcessArea (dng_negative & /* negative */,
+void dng_opcode_DeltaPerRow::ProcessArea (dng_negative &negative,
 										  uint32 /* threadIndex */,
 										  dng_pixel_buffer &buffer,
 										  const dng_rect &dstArea,
@@ -969,6 +915,13 @@ void dng_opcode_DeltaPerRow::ProcessArea (dng_negative & /* negative */,
 		uint32 cols = overlap.W ();
 		
 		uint32 colPitch = fAreaSpec.ColPitch ();
+  
+        real32 scale = fScale;
+        
+        if (Stage () >= 2 && negative.Stage3BlackLevel () != 0)
+            {
+            scale *= (real32) (1.0 - negative.Stage3BlackLevelNormalized ());
+            }
 		
 		for (uint32 plane = fAreaSpec.Plane ();
 			 plane < fAreaSpec.Plane () + fAreaSpec.Planes () &&
@@ -983,7 +936,7 @@ void dng_opcode_DeltaPerRow::ProcessArea (dng_negative & /* negative */,
 			for (int32 row = overlap.t; row < overlap.b; row += fAreaSpec.RowPitch ())
 				{
 				
-				real32 rowDelta = *(table++) * fScale;
+				real32 rowDelta = *(table++) * scale;
 				
 				real32 *dPtr = buffer.DirtyPixel_real32 (row, overlap.l, plane);
 				
@@ -994,7 +947,7 @@ void dng_opcode_DeltaPerRow::ProcessArea (dng_negative & /* negative */,
 					
 					real32 y = x + rowDelta;
 							   
-					dPtr [col] = Pin_real32 (0.0f, y, 1.0f);
+					dPtr [col] = Pin_real32 (-1.0f, y, 1.0f);
 					
 					}
 				
@@ -1044,9 +997,8 @@ dng_opcode_DeltaPerColumn::dng_opcode_DeltaPerColumn (dng_host &host,
 	
 	fAreaSpec.GetData (stream);
 	
-	uint32 deltas = (fAreaSpec.Area ().W () +
-					 fAreaSpec.ColPitch () - 1) /
-					 fAreaSpec.ColPitch ();
+	uint32 deltas = SafeUint32DivideUp (fAreaSpec.Area ().W (),
+										fAreaSpec.ColPitch ());
 					 
 	if (deltas != stream.Get_uint32 ())
 		{
@@ -1058,7 +1010,9 @@ dng_opcode_DeltaPerColumn::dng_opcode_DeltaPerColumn (dng_host &host,
 		ThrowBadFormat ();
 		}
 		
-	fTable.Reset (host.Allocate (deltas * (uint32) sizeof (real32)));
+	fTable.Reset (host.Allocate
+				  (SafeUint32Mult (deltas,
+								   static_cast<uint32> (sizeof (real32)))));
 	
 	real32 *table = fTable->Buffer_real32 ();
 	
@@ -1095,9 +1049,8 @@ dng_opcode_DeltaPerColumn::dng_opcode_DeltaPerColumn (dng_host &host,
 void dng_opcode_DeltaPerColumn::PutData (dng_stream &stream) const
 	{
 	
-	uint32 deltas = (fAreaSpec.Area ().W () +
-					 fAreaSpec.ColPitch () - 1) /
-					 fAreaSpec.ColPitch ();
+	uint32 deltas = SafeUint32DivideUp (fAreaSpec.Area ().W (),
+										fAreaSpec.ColPitch ());
 	
 	stream.Put_uint32 (dng_area_spec::kDataSize + 4 + deltas * 4);
 	
@@ -1161,7 +1114,7 @@ dng_rect dng_opcode_DeltaPerColumn::ModifiedBounds (const dng_rect &imageBounds)
 
 /*****************************************************************************/
 
-void dng_opcode_DeltaPerColumn::ProcessArea (dng_negative & /* negative */,
+void dng_opcode_DeltaPerColumn::ProcessArea (dng_negative &negative,
 											 uint32 /* threadIndex */,
 											 dng_pixel_buffer &buffer,
 											 const dng_rect &dstArea,
@@ -1178,6 +1131,13 @@ void dng_opcode_DeltaPerColumn::ProcessArea (dng_negative & /* negative */,
 		
 		int32 rowStep = buffer.RowStep () * fAreaSpec.RowPitch ();
 		
+        real32 scale = fScale;
+        
+        if (Stage () >= 2 && negative.Stage3BlackLevel () != 0)
+            {
+            scale *= (real32) (1.0 - negative.Stage3BlackLevelNormalized ());
+            }
+        
 		for (uint32 plane = fAreaSpec.Plane ();
 			 plane < fAreaSpec.Plane () + fAreaSpec.Planes () &&
 			 plane < buffer.Planes ();
@@ -1191,7 +1151,7 @@ void dng_opcode_DeltaPerColumn::ProcessArea (dng_negative & /* negative */,
 			for (int32 col = overlap.l; col < overlap.r; col += fAreaSpec.ColPitch ())
 				{
 				
-				real32 colDelta = *(table++) * fScale;
+				real32 colDelta = *(table++) * scale;
 				
 				real32 *dPtr = buffer.DirtyPixel_real32 (overlap.t, col, plane);
 				
@@ -1202,7 +1162,7 @@ void dng_opcode_DeltaPerColumn::ProcessArea (dng_negative & /* negative */,
 					
 					real32 y = x + colDelta;
 							   
-					dPtr [0] = Pin_real32 (0.0f, y, 1.0f);
+					dPtr [0] = Pin_real32 (-1.0f, y, 1.0f);
 					
 					dPtr += rowStep;
 					
@@ -1252,9 +1212,8 @@ dng_opcode_ScalePerRow::dng_opcode_ScalePerRow (dng_host &host,
 	
 	fAreaSpec.GetData (stream);
 	
-	uint32 scales = (fAreaSpec.Area ().H () +
-					 fAreaSpec.RowPitch () - 1) /
-					 fAreaSpec.RowPitch ();
+	uint32 scales = SafeUint32DivideUp (fAreaSpec.Area ().H (),
+										fAreaSpec.RowPitch ());
 					 
 	if (scales != stream.Get_uint32 ())
 		{
@@ -1266,7 +1225,9 @@ dng_opcode_ScalePerRow::dng_opcode_ScalePerRow (dng_host &host,
 		ThrowBadFormat ();
 		}
 		
-	fTable.Reset (host.Allocate (scales * (uint32) sizeof (real32)));
+	fTable.Reset (host.Allocate
+				  (SafeUint32Mult (scales,
+								   static_cast<uint32> (sizeof (real32)))));
 	
 	real32 *table = fTable->Buffer_real32 ();
 	
@@ -1303,9 +1264,8 @@ dng_opcode_ScalePerRow::dng_opcode_ScalePerRow (dng_host &host,
 void dng_opcode_ScalePerRow::PutData (dng_stream &stream) const
 	{
 	
-	uint32 scales = (fAreaSpec.Area ().H () +
-					 fAreaSpec.RowPitch () - 1) /
-					 fAreaSpec.RowPitch ();
+	uint32 scales = SafeUint32DivideUp (fAreaSpec.Area ().H (),
+										fAreaSpec.RowPitch ());
 	
 	stream.Put_uint32 (dng_area_spec::kDataSize + 4 + scales * 4);
 	
@@ -1342,7 +1302,7 @@ dng_rect dng_opcode_ScalePerRow::ModifiedBounds (const dng_rect &imageBounds)
 
 /*****************************************************************************/
 
-void dng_opcode_ScalePerRow::ProcessArea (dng_negative & /* negative */,
+void dng_opcode_ScalePerRow::ProcessArea (dng_negative &negative,
 										  uint32 /* threadIndex */,
 										  dng_pixel_buffer &buffer,
 										  const dng_rect &dstArea,
@@ -1357,6 +1317,13 @@ void dng_opcode_ScalePerRow::ProcessArea (dng_negative & /* negative */,
 		uint32 cols = overlap.W ();
 		
 		uint32 colPitch = fAreaSpec.ColPitch ();
+  
+        real32 blackOffset = 0.0f;
+        
+        if (Stage () >= 2 && negative.Stage3BlackLevel () != 0)
+            {
+            blackOffset = (real32) negative.Stage3BlackLevelNormalized ();
+            }
 		
 		for (uint32 plane = fAreaSpec.Plane ();
 			 plane < fAreaSpec.Plane () + fAreaSpec.Planes () &&
@@ -1374,18 +1341,18 @@ void dng_opcode_ScalePerRow::ProcessArea (dng_negative & /* negative */,
 				real32 rowScale = *(table++);
 				
 				real32 *dPtr = buffer.DirtyPixel_real32 (row, overlap.l, plane);
-				
-				for (uint32 col = 0; col < cols; col += colPitch)
-					{
-					
-					real32 x = dPtr [col];
-					
-					real32 y = x * rowScale;
-							   
-					dPtr [col] = Min_real32 (y, 1.0f);
-					
-					}
-				
+    
+                for (uint32 col = 0; col < cols; col += colPitch)
+                    {
+                    
+                    real32 x = dPtr [col];
+                    
+                    real32 y = (x - blackOffset) * rowScale + blackOffset;
+                        
+                    dPtr [col] = Pin_real32 (-1.0f, y, 1.0f);
+                    
+                    }
+
 				}
 			
 			}
@@ -1430,9 +1397,8 @@ dng_opcode_ScalePerColumn::dng_opcode_ScalePerColumn (dng_host &host,
 	
 	fAreaSpec.GetData (stream);
 	
-	uint32 scales = (fAreaSpec.Area ().W () +
-					 fAreaSpec.ColPitch () - 1) /
-					 fAreaSpec.ColPitch ();
+	uint32 scales = SafeUint32DivideUp (fAreaSpec.Area ().W (),
+										fAreaSpec.ColPitch());
 					 
 	if (scales != stream.Get_uint32 ())
 		{
@@ -1444,7 +1410,9 @@ dng_opcode_ScalePerColumn::dng_opcode_ScalePerColumn (dng_host &host,
 		ThrowBadFormat ();
 		}
 		
-	fTable.Reset (host.Allocate (scales * (uint32) sizeof (real32)));
+	fTable.Reset (host.Allocate
+				  (SafeUint32Mult (scales,
+								   static_cast<uint32> (sizeof (real32)))));
 	
 	real32 *table = fTable->Buffer_real32 ();
 	
@@ -1481,9 +1449,8 @@ dng_opcode_ScalePerColumn::dng_opcode_ScalePerColumn (dng_host &host,
 void dng_opcode_ScalePerColumn::PutData (dng_stream &stream) const
 	{
 	
-	uint32 scales = (fAreaSpec.Area ().W () +
-					 fAreaSpec.ColPitch () - 1) /
-					 fAreaSpec.ColPitch ();
+	uint32 scales = SafeUint32DivideUp (fAreaSpec.Area ().W (),
+										fAreaSpec.ColPitch ());
 	
 	stream.Put_uint32 (dng_area_spec::kDataSize + 4 + scales * 4);
 	
@@ -1520,7 +1487,7 @@ dng_rect dng_opcode_ScalePerColumn::ModifiedBounds (const dng_rect &imageBounds)
 
 /*****************************************************************************/
 
-void dng_opcode_ScalePerColumn::ProcessArea (dng_negative & /* negative */,
+void dng_opcode_ScalePerColumn::ProcessArea (dng_negative &negative,
 											 uint32 /* threadIndex */,
 											 dng_pixel_buffer &buffer,
 											 const dng_rect &dstArea,
@@ -1537,6 +1504,13 @@ void dng_opcode_ScalePerColumn::ProcessArea (dng_negative & /* negative */,
 		
 		int32 rowStep = buffer.RowStep () * fAreaSpec.RowPitch ();
 		
+        real32 blackOffset = 0.0f;
+        
+        if (Stage () >= 2 && negative.Stage3BlackLevel () != 0)
+            {
+            blackOffset = (real32) negative.Stage3BlackLevelNormalized ();
+            }
+        
 		for (uint32 plane = fAreaSpec.Plane ();
 			 plane < fAreaSpec.Plane () + fAreaSpec.Planes () &&
 			 plane < buffer.Planes ();
@@ -1559,9 +1533,9 @@ void dng_opcode_ScalePerColumn::ProcessArea (dng_negative & /* negative */,
 					
 					real32 x = dPtr [0];
 					
-					real32 y = x * colScale;
+					real32 y = (x - blackOffset) * colScale + blackOffset;
 							   
-					dPtr [0] = Min_real32 (y, 1.0f);
+					dPtr [0] = Pin_real32 (-1.0f, y, 1.0f);
 					
 					dPtr += rowStep;
 					

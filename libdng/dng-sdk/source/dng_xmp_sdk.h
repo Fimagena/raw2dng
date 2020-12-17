@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2012 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_xmp_sdk.h#2 $ */ 
-/* $DateTime: 2012/05/31 09:29:29 $ */
-/* $Change: 832505 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #ifndef __dng_xmp_sdk__
@@ -27,6 +20,7 @@
 
 extern const char *XMP_NS_TIFF;
 extern const char *XMP_NS_EXIF;
+extern const char *XMP_NS_EXIFEX;
 extern const char *XMP_NS_PHOTOSHOP;
 extern const char *XMP_NS_XAP;
 extern const char *XMP_NS_XAP_RIGHTS;
@@ -36,6 +30,7 @@ extern const char *XMP_NS_MM;
 
 extern const char *XMP_NS_CRS;
 extern const char *XMP_NS_CRSS;
+extern const char *XMP_NS_CRD;
 
 extern const char *XMP_NS_LCP;
 
@@ -47,6 +42,8 @@ extern const char *XMP_NS_IPTC_EXT;
 extern const char *XMP_NS_CRX;
 
 extern const char *XMP_NS_DNG;
+
+extern const char *XMP_NS_PANO;
 
 /*****************************************************************************/
 
@@ -89,6 +86,11 @@ class dng_xmp_sdk
 		static void TerminateSDK ();
 	
 		bool HasMeta () const;
+
+        void RequireMeta ()
+            {
+            NeedMeta ();
+            }
 
 		void * GetPrivateMeta ();
 						   
@@ -148,7 +150,12 @@ class dng_xmp_sdk
 
 		bool GetAltLangDefault (const char *ns,
 								const char *path,
-								dng_string &s) const;
+								dng_string &s,
+                                bool silent = false) const;
+								
+		bool GetLocalString (const char *ns,
+							 const char *path,
+							 dng_local_string &s) const;
 								
 		bool GetStructField (const char *ns,
 							 const char *path,
@@ -172,6 +179,10 @@ class dng_xmp_sdk
 		void SetAltLangDefault (const char *ns,
 								const char *path,
 								const dng_string &s);
+
+        void SetLocalString (const char *ns,
+                             const char *path,
+                             const dng_local_string &s);
 								
 		void SetStructField (const char *ns,
 							 const char *path,
@@ -207,13 +218,13 @@ class dng_xmp_sdk
 						   
 		#if qDNGXMPDocOps
 		
-		void DocOpsOpenXMP (const char *srcMIMI);
+		void DocOpsOpenXMP (const char *srcMIME);
 		
-		void DocOpsPrepareForSave (const char *srcMIMI,
-								   const char *dstMIMI,
+		void DocOpsPrepareForSave (const char *srcMIME,
+								   const char *dstMIME,
 								   bool newPath = true);
 								   
-		void DocOpsUpdateMetadata (const char *srcMIMI);
+		void DocOpsUpdateMetadata (const char *srcMIME);
 		
 		#endif
 						   

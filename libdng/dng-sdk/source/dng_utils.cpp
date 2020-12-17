@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2012 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_utils.cpp#3 $ */ 
-/* $DateTime: 2012/08/12 15:38:38 $ */
-/* $Change: 842799 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_utils.h"
@@ -18,11 +11,14 @@
 #include "dng_area_task.h"
 #include "dng_assertions.h"
 #include "dng_bottlenecks.h"
+#include "dng_flags.h"
+#include "dng_globals.h"
 #include "dng_host.h"
 #include "dng_image.h"
-#include "dng_flags.h"
+#include "dng_mutex.h"
 #include "dng_point.h"
 #include "dng_rect.h"
+#include "dng_simd_type.h"
 #include "dng_tile_iterator.h"
 
 #if qMacOS
@@ -35,12 +31,18 @@
 #include <mach/mach_time.h>
 #endif
 
+#if qiPhone || qLinux
+#include <signal.h> // for raise
+#endif
+
 #if qWinOS
 #include <windows.h>
 #else
 #include <sys/time.h>
 #include <stdarg.h> // for va_start/va_end
 #endif
+
+#include <atomic>
 
 /*****************************************************************************/
 
@@ -50,51 +52,44 @@
 
 #if qMacOS
 	#define DNG_DEBUG_BREAK __asm__ volatile ("int3")
-#elif qWinOS
-	#if qDNG64Bit
-		// no inline assembly on Win 64-bit, so use DebugBreak
-		#define DNG_DEBUG_BREAK DebugBreak()
-	#else
-		#define DNG_DEBUG_BREAK __asm__ volatile ("int3")
-	#endif
 #elif qiPhone
-	// simulator is running on Intel
 	#if qiPhoneSimulator
+        // simulator is running on Intel
 		#define DNG_DEBUG_BREAK __asm__ volatile ("int3")
 	#else
-		// The debugger doesn't restore program counter after this is called.
-		//   Caller must move program counter past line to continue.
-		// As of iOS5/xCode 4.2, recovery may not be possible.
-		#define DNG_DEBUG_BREAK __asm__ volatile ("bkpt 1")
+        // You'll be one level deeper in __kill. Works on Linux, Android too.
+		#define DNG_DEBUG_BREAK raise(SIGTRAP)
 	#endif
+#elif qWinOS
+	// DebugBreak has to be emulated on WinRT
+    #define DNG_DEBUG_BREAK DebugBreak()  
 #elif qAndroid
-	#define DNG_DEBUG_BREAK __asm__ volatile ("bkpt 1") 
+	#define DNG_DEBUG_BREAK raise(SIGTRAP)
 #elif qLinux
-	#define DNG_DEBUG_BREAK __asm__ volatile ("int3")
+	#define DNG_DEBUG_BREAK raise(SIGTRAP)
 #else
 	#define DNG_DEBUG_BREAK
 #endif
 
 /*****************************************************************************/
 
-bool gPrintAsserts   = true;
-bool gBreakOnAsserts = true;
-
-/*****************************************************************************/
-
 void dng_show_message (const char *s)
 	{
-	
+    // only append a newline if there isn't already one
+    const char* nl = "\n";
+	if (s[0] && (s[strlen(s)-1] == '\n'))
+        nl = "";
+        
 	#if qDNGPrintMessages
 	
 	// display the message
 	if (gPrintAsserts)
-		fprintf (stderr, "%s\n", s);
+		fprintf (stderr, "%s%s", s, nl);
 		
 	#elif qiPhone || qAndroid || qLinux
 	
 	if (gPrintAsserts)
-		fprintf (stderr, "%s\n", s);
+		fprintf (stderr, "%s%s", s, nl);
 	
 	// iOS doesn't print a message to the console like DebugStr and MessageBox do, so we have to do both
 	// You'll have to advance the program counter manually past this statement
@@ -108,7 +103,7 @@ void dng_show_message (const char *s)
 		// truncate the to 255 chars
 		char ss [256];
 	
-		uint32 len = strlen (s);
+		uint32 len = (uint32) strlen (s);
 		if (len > 255)
 			len = 255;
 		strncpy (&(ss [1]), s, len );
@@ -118,7 +113,7 @@ void dng_show_message (const char *s)
 		}
 	 else if (gPrintAsserts)
 		{
-		fprintf (stderr, "%s\n", s);
+		fprintf (stderr, "%s%s", s, nl);
 		}
 	
 	#elif qWinOS
@@ -129,7 +124,7 @@ void dng_show_message (const char *s)
 	if (gBreakOnAsserts)
 		MessageBoxA (NULL, (LPSTR) s, NULL, MB_OK);
 	else if (gPrintAsserts)
-		fprintf (stderr, "%s\n", s);
+		fprintf (stderr, "%s%s", s, nl);
  		
 	#endif
 
@@ -140,7 +135,7 @@ void dng_show_message (const char *s)
 void dng_show_message_f (const char *fmt, ... )
 	{
 	
-	char buffer [1024];
+	char buffer [2048];
 	
 	va_list ap;
 	va_start (ap, fmt);
@@ -159,6 +154,57 @@ void dng_show_message_f (const char *fmt, ... )
 
 /*****************************************************************************/
 
+uint32 ComputeBufferSize (uint32 pixelType, 
+						  const dng_point &tileSize,
+						  uint32 numPlanes, 
+						  PaddingType paddingType)
+	{
+
+	// Convert tile size to uint32.
+
+	if (tileSize.h < 0 || tileSize.v < 0)
+		{
+		ThrowMemoryFull ("Negative tile size");
+		}
+
+	const uint32 tileSizeH = static_cast<uint32> (tileSize.h);
+	const uint32 tileSizeV = static_cast<uint32> (tileSize.v);
+	
+	const uint32 pixelSize = TagTypeSize (pixelType);
+	
+	// Add padding to width if necessary.
+
+	uint32 paddedWidth = tileSizeH;
+
+	if (paddingType == padSIMDBytes)
+		{
+
+		if (!RoundUpForPixelSize (paddedWidth, 
+								  pixelSize, 
+								  &paddedWidth))
+			{
+			ThrowOverflow ("Arithmetic overflow computing buffer size");
+			}
+
+		}
+	
+	// Compute buffer size.
+
+	uint32 bufferSize;
+
+	if (!SafeUint32Mult (paddedWidth, tileSizeV, &bufferSize) ||
+		!SafeUint32Mult (bufferSize,  pixelSize, &bufferSize) ||
+		!SafeUint32Mult (bufferSize,  numPlanes, &bufferSize))
+		{
+		ThrowOverflow ("Arithmetic overflow computing buffer size");
+		}
+	
+	return bufferSize;
+
+	}
+
+/*****************************************************************************/
+
 real64 TickTimeInSeconds ()
 	{
 	
@@ -171,14 +217,12 @@ real64 TickTimeInSeconds ()
 	// Note that the frequency changing can cause the return
 	// result to jump backwards, which is why the TickCountInSeconds
 	// (below) also exists.
-
+        
 	// Just plug in laptop when doing timings to minimize this.
 	//  QPC/QPH is a slow call compared to rtdsc.
-		
-	#if qImagecore
-
-	// You should be plugged-in when measuring.
-
+    //  but QPC/QPF is not tied to speed step, it's the northbridge timer.
+    //  caching the invFrequency also avoids a costly divide
+        
 	static real64 freqMultiplier = 0.0;
 
 	if (freqMultiplier == 0.0)
@@ -192,16 +236,6 @@ real64 TickTimeInSeconds ()
 
 		}
 
-	#else
-
-	LARGE_INTEGER freq;
-
-	QueryPerformanceFrequency (&freq);
-
-	real64 freqMultiplier = 1.0 / (real64) freq.QuadPart;
-		
-	#endif	// qImagecore
-		
 	LARGE_INTEGER cycles;
 
 	QueryPerformanceCounter (&cycles);
@@ -210,22 +244,19 @@ real64 TickTimeInSeconds ()
 
 	#elif qiPhone || qMacOS
 	
-	//  this is switching Mac to high performance timer
-	//  and this is also the timer for iPhone
-	
-	// assume frequency is unchanging, requesting frequency every time call
-	//   is too slow.  multiple cores, different frequency ?
-	
+    // cache frequency of high-perf timer
 	static real64 freqMultiplier = 0.0;
 	if (freqMultiplier == 0.0)
 		{
+            
 		mach_timebase_info_data_t freq; 
 		mach_timebase_info(&freq);
 		
 		// converts from nanos to micros
 		//  numer = 125, denom = 3 * 1000
 		freqMultiplier = ((real64)freq.numer / (real64)freq.denom) * 1.0e-9;
-		}
+		
+        }
 	
 	return mach_absolute_time() * freqMultiplier;
 		
@@ -254,26 +285,54 @@ real64 TickTimeInSeconds ()
 
 real64 TickCountInSeconds ()
 	{
-	
-	#if qWinOS
-	
-	return GetTickCount () * (1.0 / 1000.0);
-	
-	#elif qMacOS
-	
-	return TickCount () * (1.0 / 60.0);
-	
-	#else
-	
-	return TickTimeInSeconds ();
-	
-	#endif
+        
+    return TickTimeInSeconds ();
 	
 	}
 
 /*****************************************************************************/
 
-bool gDNGShowTimers = true;
+static std::atomic_int sTimerLevel (0);
+
+/*****************************************************************************/
+
+void DNGIncrementTimerLevel ()
+    {
+    
+    // This isn't thread coherent, multiple threads can create/destroy cr_timer
+    //   causing the tabbing to be invalid.  Imagecore disables this.
+    
+    if (!gImagecore)
+        {
+        
+        sTimerLevel++;
+        
+        }
+        
+    }
+
+/*****************************************************************************/
+
+int32 DNGDecrementTimerLevel ()
+    {
+
+    if (gImagecore)
+        {
+        
+        return 0;
+        
+        }
+        
+    else
+        {
+        
+        return (int32) (--sTimerLevel);
+        
+        }
+        
+   }
+
+/*****************************************************************************/
 
 dng_timer::dng_timer (const char *message)
 
@@ -282,21 +341,37 @@ dng_timer::dng_timer (const char *message)
 	
 	{
 
+    DNGIncrementTimerLevel ();
+    
 	}
 
 /*****************************************************************************/
 
 dng_timer::~dng_timer ()
 	{
+    
+    uint32 level = Pin_int32 (0, DNGDecrementTimerLevel (), 10);
 	
 	if (!gDNGShowTimers)
 		return;
 
 	real64 totalTime = TickTimeInSeconds () - fStartTime;
 	
-	fprintf (stderr, "%s: %0.3f sec\n", fMessage, totalTime);
-
-	}
+    #if defined(qCRLogging) && qCRLogging && defined(cr_logi)
+        
+    if (gImagecore)
+        {
+        // Imagecore force includes cr_log and overrides DNG to go to its logging under a mutex.
+        // don't use indenting or fprintf to stderr, want these buffered
+        cr_logi("timer", "%s: %0.3f sec\n", fMessage, totalTime);
+        return;
+        }
+        
+    #endif
+        
+    fprintf (stderr, "%*s%s: %0.3f sec\n", level*2, "", fMessage, totalTime);
+    
+    }
 
 /*****************************************************************************/
 
@@ -352,10 +427,37 @@ dng_dither::dng_dither ()
 
 	for (uint32 i = 0; i < kRNGSize2D; i++)
 		{
+        
+        // The correct math for 16 to 8-bit dither would be:
+        //
+        // y = (x * 255 + r) / 65535;  (0 <= r <= 65534)
+        //
+        // The bottlnecks are using a faster approximation of
+        // this math (using a power of two for the division):
+        //
+        // y = (x * 255 + r) / 65536;  (255 <= r <= 65535)
+        //
+        // To insure that all exact 8 bit values in 16 bit space
+        // round trip exactly to the same 8-bit, we need to limit
+        // r values to the range 255 to 65535.
+        //
+        // This results in the dither effect being slightly
+        // imperfect, but correct round-tripping of 8-bit values
+        // is far more important.
+        
+        uint16 value;
+        
+        do
+            {
+            
+            seed = DNG_Random (seed);
+            
+            value = (uint16) seed;
+            
+            }
+        while (value < 255);
 
-		seed = DNG_Random (seed);
-
-		buffer [i] = (uint16) (seed);
+		buffer [i] = value;
 
 		}
 	
@@ -470,6 +572,7 @@ void HistogramArea (dng_host & /* host */,
 		
 /*****************************************************************************/
 
+template <SIMDType simd>
 class dng_limit_float_depth_task: public dng_area_task
 	{
 	
@@ -508,12 +611,16 @@ class dng_limit_float_depth_task: public dng_area_task
 
 /*****************************************************************************/
 
-dng_limit_float_depth_task::dng_limit_float_depth_task (const dng_image &srcImage,
-														dng_image &dstImage,
-														uint32 bitDepth,
-														real32 scale)
+template <SIMDType simd>
+dng_limit_float_depth_task<simd>::dng_limit_float_depth_task
+	(const dng_image &srcImage,
+	 dng_image &dstImage,
+	 uint32 bitDepth,
+	 real32 scale)
+
+	:	dng_area_task ("dng_limit_float_depth_task")
 										
-	:	fSrcImage (srcImage)
+	,	fSrcImage (srcImage)
 	,	fDstImage (dstImage)
 	,	fBitDepth (bitDepth)
 	,	fScale    (scale)
@@ -524,11 +631,16 @@ dng_limit_float_depth_task::dng_limit_float_depth_task (const dng_image &srcImag
 
 /*****************************************************************************/
 
-void dng_limit_float_depth_task::Process (uint32 /* threadIndex */,
-										  const dng_rect &tile,
-										  dng_abort_sniffer * /* sniffer */)
+template <SIMDType simd>
+void dng_limit_float_depth_task<simd>::Process (uint32 /* threadIndex */,
+												const dng_rect &tile,
+												dng_abort_sniffer * /* sniffer */)
 	{
-	
+
+	INTEL_COMPILER_NEEDED_NOTE
+
+	SET_CPU_FEATURE (simd);
+
 	dng_const_tile_buffer srcBuffer (fSrcImage, tile);
 	dng_dirty_tile_buffer dstBuffer (fDstImage, tile);
 	
@@ -603,7 +715,7 @@ void dng_limit_float_depth_task::Process (uint32 /* threadIndex */,
 			
 				const real32 *sPtr2 = sPtr1;
 					  real32 *dPtr2 = dPtr1;
-					  
+				INTEL_PRAGMA_SIMD_ASSERT_VECLEN_FLOAT(simd)
 				for (uint32 index2 = 0; index2 < count2; index2++)
 					{
 					
@@ -624,9 +736,14 @@ void dng_limit_float_depth_task::Process (uint32 /* threadIndex */,
 				
 			if (limit16)
 				{
-			
+
+				//start by using intrinsic __m256 _mm256_cvtph_ps (__m128i a) 
+				//once the intrinsic is written, merge this branch with previous one
+
 				uint32 *dPtr2 = (uint32 *) dPtr1;
-					  
+
+				INTEL_PRAGMA_SIMD_ASSERT_VECLEN_INT32(simd)
+
 				for (uint32 index2 = 0; index2 < count2; index2++)
 					{
 					
@@ -679,9 +796,10 @@ void dng_limit_float_depth_task::Process (uint32 /* threadIndex */,
 		}
 				   	
 	}
-								  
+
 /******************************************************************************/
 
+template <SIMDType simd>
 void LimitFloatBitDepth (dng_host &host,
 						 const dng_image &srcImage,
 						 dng_image &dstImage,
@@ -692,13 +810,79 @@ void LimitFloatBitDepth (dng_host &host,
 	DNG_ASSERT (srcImage.PixelType () == ttFloat, "Floating point image expected");
 	DNG_ASSERT (dstImage.PixelType () == ttFloat, "Floating point image expected");
 	
-	dng_limit_float_depth_task task (srcImage,
+	dng_limit_float_depth_task<simd> task (srcImage,
 									 dstImage,
 									 bitDepth,
 									 scale);
 									 
 	host.PerformAreaTask (task, dstImage.Bounds ());
 	
+	}
+
+/*****************************************************************************/
+
+template
+void LimitFloatBitDepth<Scalar> (dng_host &host,
+								 const dng_image &srcImage,
+								 dng_image &dstImage,
+								 uint32 bitDepth,
+								 real32 scale);
+
+/*****************************************************************************/
+
+#if qDNGIntelCompiler
+
+template
+void LimitFloatBitDepth<AVX2> (dng_host &host,
+							   const dng_image &srcImage,
+							   dng_image &dstImage,
+							   uint32 bitDepth,
+							   real32 scale);
+
+#endif	// qDNGIntelCompiler
+
+/*****************************************************************************/
+
+void LimitFloatBitDepth (dng_host &host,
+						 const dng_image &srcImage,
+						 dng_image &dstImage,
+						 uint32 bitDepth,
+						 real32 scale)
+	{
+	
+	// Kludge: Turning this off for now because the AVX2 path produces
+	// slightly different results from the Scalar routine causing a mis-match
+	// in raw digest values when building HDR merge result negatives which
+	// causes the client to display a "file appears to be damaged" warning.
+	// -bury 11/13/2017
+	
+	#if (qDNGIntelCompiler && qDNGExperimental && 0)
+
+	if (gDNGMaxSIMD >= AVX2)
+		{
+
+		LimitFloatBitDepth<AVX2> (host,
+								  srcImage,
+								  dstImage,
+								  bitDepth,
+								  scale);
+
+		}
+
+	else
+
+	#endif	// qDNGIntelCompiler && qDNGExperimental
+
+		{
+
+		LimitFloatBitDepth<Scalar> (host,
+									srcImage,
+									dstImage,
+									bitDepth,
+									scale);
+
+		}
+
 	}
 
 /*****************************************************************************/

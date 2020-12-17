@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_rect.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_rect.h"
@@ -163,6 +156,27 @@ dng_rect_real64 operator| (const dng_rect_real64 &a,
 	
 	return c;
 	
+	}
+
+/*****************************************************************************/
+
+dng_rect_real64 Bounds (const dng_point_real64 &a,
+						const dng_point_real64 &b,
+						const dng_point_real64 &c,
+						const dng_point_real64 &d)
+	{
+                                    
+	real64 xMin = Min_real64 (a.h, Min_real64 (b.h, Min_real64 (c.h, d.h)));
+	real64 xMax = Max_real64 (a.h, Max_real64 (b.h, Max_real64 (c.h, d.h)));
+
+	real64 yMin = Min_real64 (a.v, Min_real64 (b.v, Min_real64 (c.v, d.v)));
+	real64 yMax = Max_real64 (a.v, Max_real64 (b.v, Max_real64 (c.v, d.v)));
+
+	return dng_rect_real64 (yMin,
+							xMin,
+							yMax,
+							xMax);
+                                    
 	}
 
 /*****************************************************************************/

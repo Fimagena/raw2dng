@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2008 Adobe Systems Incorporated
+// Copyright 2008-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:	Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_lens_correction.h#2 $ */ 
-/* $DateTime: 2012/08/02 06:09:06 $ */
-/* $Change: 841096 $ */
-/* $Author: erichan $ */
 
 /** \file
  * Opcodes to fix lens aberrations such as geometric distortion, lateral chromatic
@@ -25,13 +20,12 @@
 
 #include "dng_1d_function.h"
 #include "dng_matrix.h"
+#include "dng_memory.h"
 #include "dng_opcodes.h"
 #include "dng_pixel_buffer.h"
 #include "dng_point.h"
 #include "dng_resample.h"
 #include "dng_sdk_limits.h"
-
-#include <vector>
 
 /*****************************************************************************/
 
@@ -208,6 +202,16 @@ class dng_warp_params
 		virtual dng_point_real64 MaxSrcTanGap (dng_point_real64 minDst,
 											   dng_point_real64 maxDst) const = 0;
 
+		/// Compute and return the minimum src/dst ratio that should be used
+		/// for this warp.
+
+		virtual real64 SafeMinRatio () const = 0;
+
+		/// Compute and return the maximum src/dst ratio that should be used
+		/// for this warp.
+
+		virtual real64 SafeMaxRatio () const = 0;
+
 		/// Debug parameters.
 
 		virtual void Dump () const;
@@ -336,6 +340,10 @@ class dng_warp_params_rectilinear: public dng_warp_params
 		virtual dng_point_real64 MaxSrcTanGap (dng_point_real64 minDst,
 											   dng_point_real64 maxDst) const;
 
+		virtual real64 SafeMinRatio () const;
+
+		virtual real64 SafeMaxRatio () const;
+
 		virtual void Dump () const;
 
 	};
@@ -442,6 +450,10 @@ class dng_warp_params_fisheye: public dng_warp_params
 		virtual dng_point_real64 MaxSrcTanGap (dng_point_real64 minDst,
 											   dng_point_real64 maxDst) const;
 
+		virtual real64 SafeMinRatio () const;
+
+		virtual real64 SafeMaxRatio () const;
+
 		virtual void Dump () const;
 
 	};
@@ -475,6 +487,17 @@ class dng_opcode_WarpRectilinear: public dng_opcode
 		virtual void Apply (dng_host &host,
 							dng_negative &negative,
 							AutoPtr<dng_image> &image);
+
+		// Other methods.
+
+		bool HasDistort () const;
+
+		bool HasLateralCA () const;
+
+		const dng_warp_params_rectilinear & Params () const
+			{
+			return fWarpParams;
+			}
 
 	protected:
 
@@ -546,7 +569,7 @@ class dng_vignette_radial_params
 		//
 		// Gain g = 1 + (k0 * r^2) + (k1 * r^4) + (k2 * r^6) + (k3 * r^8) + (k4 * r^10)
 
-		std::vector<real64> fParams;
+		dng_std_vector<real64> fParams;
 
 		dng_point_real64 fCenter;
 
@@ -554,8 +577,10 @@ class dng_vignette_radial_params
 
 		dng_vignette_radial_params ();
 
-		dng_vignette_radial_params (const std::vector<real64> &params,
+		dng_vignette_radial_params (const dng_std_vector<real64> &params,
 									const dng_point_real64 &center);
+
+		dng_vignette_radial_params (const dng_vignette_radial_params &params);
 
 		bool IsNOP () const;
 
@@ -600,6 +625,11 @@ class dng_opcode_FixVignetteRadial: public dng_inplace_opcode
 		
 		explicit dng_opcode_FixVignetteRadial (dng_stream &stream);
 	
+		const dng_vignette_radial_params & Params () const
+			{
+			return fParams;
+			}
+
 		virtual bool IsNOP () const;
 		
 		virtual bool IsValidForNegative (const dng_negative &) const;
@@ -628,6 +658,8 @@ class dng_opcode_FixVignetteRadial: public dng_inplace_opcode
 	protected:
 
 		static uint32 ParamBytes ();
+
+		virtual dng_vignette_radial_params MakeParamsForRender (const dng_negative &negative);
 
 	};
 

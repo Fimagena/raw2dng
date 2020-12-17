@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_spline.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_spline.h"
@@ -70,7 +63,7 @@ void dng_spline_solver::Solve ()
 	
 	int32 count = (int32) X.size ();
 	
-	DNG_ASSERT (count >= 2, "Too few points");
+	DNG_REQUIRE (count >= 2, "Too few points");
 	
 	int32 start = 0;
 	int32 end   = count;
@@ -106,9 +99,9 @@ void dng_spline_solver::Solve ()
 	if ((end - start) > 2)
 		{
 
-		std::vector<real64> E;
-		std::vector<real64> F;
-		std::vector<real64> G;
+		dng_std_vector<real64> E;
+		dng_std_vector<real64> F;
+		dng_std_vector<real64> G;
 		
 		E.resize (count);
 		F.resize (count);

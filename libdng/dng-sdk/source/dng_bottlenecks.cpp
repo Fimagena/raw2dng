@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2009 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_bottlenecks.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_bottlenecks.h"
@@ -26,15 +19,15 @@ dng_suite gDNGSuite =
 	RefSwapBytes16,
 	RefSwapBytes32,
 	RefSetArea8,
-	RefSetArea16,
-	RefSetArea32,
+	RefSetArea<Scalar, uint16>,
+	RefSetArea<Scalar, uint32>,
 	RefCopyArea8,
 	RefCopyArea16,
 	RefCopyArea32,
 	RefCopyArea8_16,
 	RefCopyArea8_S16,
 	RefCopyArea8_32,
-	RefCopyArea16_S16,
+	RefCopyArea16_S16<Scalar>,
 	RefCopyArea16_32,
 	RefCopyArea8_R32,
 	RefCopyArea16_R32,
@@ -66,7 +59,8 @@ dng_suite gDNGSuite =
 	RefVignetteMask16,
 	RefVignette16,
 	RefVignette32,
-	RefMapArea16
+	RefMapArea16,
+	RefBaselineMapPoly32
 	};
 
 /*****************************************************************************/

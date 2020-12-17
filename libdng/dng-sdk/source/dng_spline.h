@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_spline.h#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #ifndef __dng_spline__
@@ -19,8 +12,7 @@
 /*****************************************************************************/
 
 #include "dng_1d_function.h"
-
-#include <vector>
+#include "dng_memory.h"
 
 /*****************************************************************************/
 
@@ -53,10 +45,10 @@ class dng_spline_solver: public dng_1d_function
 	
 	protected:
 	
-		std::vector<real64> X;
-		std::vector<real64> Y;
+		dng_std_vector<real64> X;
+		dng_std_vector<real64> Y;
 		
-		std::vector<real64> S;
+		dng_std_vector<real64> S;
 		
 	public:
 	

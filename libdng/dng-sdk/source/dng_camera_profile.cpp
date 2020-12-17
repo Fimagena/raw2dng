@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006-2008 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_camera_profile.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
 
 #include "dng_camera_profile.h"
 
@@ -554,6 +549,38 @@ void dng_camera_profile::CalculateFingerprint () const
 
 /******************************************************************************/
 
+dng_fingerprint dng_camera_profile::UniqueID () const
+	{
+
+	dng_md5_printer_stream printer;
+
+	// MD5 hash is always calculated on little endian data.
+
+	printer.SetLittleEndian ();
+
+	// Start with the existing fingerprint.
+	
+	if (!fFingerprint.IsValid ())
+		CalculateFingerprint ();
+
+	printer.Put (fFingerprint.data,
+				 (uint32) sizeof (fFingerprint.data));
+
+	// Also include the UniqueCameraModelRestriction tag.
+
+	printer.Put (fUniqueCameraModelRestriction.Get	  (),
+				 fUniqueCameraModelRestriction.Length ());
+
+	// Add any other needed fields here.
+
+	// ...
+
+	return printer.Result ();
+	
+	}
+
+/******************************************************************************/
+
 bool dng_camera_profile::ValidForwardMatrix (const dng_matrix &m)
 	{
 	
@@ -893,11 +920,14 @@ void dng_camera_profile::ReadHueSatMap (dng_stream &stream,
 			}
 			
 		}
-	
+
+	hueSatMap.AssignNewUniqueRuntimeFingerprint ();
+
 	}
 
 /*****************************************************************************/
 
+DNG_ATTRIB_NO_SANITIZE("unsigned-integer-overflow")
 void dng_camera_profile::Parse (dng_stream &stream,
 								dng_camera_profile_info &profileInfo)
 	{
@@ -1029,6 +1059,11 @@ void dng_camera_profile::Parse (dng_stream &stream,
 		stream.SetReadPosition (profileInfo.fToneCurveOffset);
 
 		uint32 points = profileInfo.fToneCurveCount / 2;
+
+		if (points > kMaxToneCurvePoints)
+			{
+			ThrowProgramError ("Too many tone curve points");
+			}
 
 		fToneCurve.fCoord.resize (points);
 
@@ -1257,6 +1292,24 @@ void SplitCameraProfileName (const dng_string &name,
 	version = 0;
 	
 	uint32 len = baseName.Length ();
+
+    if (len == 7 && baseName.StartsWith ("ACR ", true))
+        {
+
+        if (name.Get () [len - 3] >= '0' &&
+            name.Get () [len - 3] <= '9' &&
+            name.Get () [len - 2] == '.' &&
+            name.Get () [len - 1] >= '0' &&
+            name.Get () [len - 1] <= '9')
+		
+        baseName.Truncate (3);
+
+        version = ((int32) (name.Get () [len - 3] - '0')) * 10 +
+                  ((int32) (name.Get () [len - 1] - '0'));
+
+        return;
+
+        }
 	
 	if (len > 5 && baseName.EndsWith (" beta"))
 		{

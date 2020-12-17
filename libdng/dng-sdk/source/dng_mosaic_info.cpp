@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2009 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_mosaic_info.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_mosaic_info.h"
@@ -104,7 +97,7 @@ void dng_bilinear_kernel::Add (const dng_point &delta,
 		
 	// Add element to list.
 		
-	DNG_ASSERT (fCount < kMaxCount, "Too many kernel entries")
+    DNG_ASSERT (fCount < kMaxCount, "Too many kernel entries");
 	
 	fDelta    [fCount] = delta;
 	fWeight32 [fCount] = weight;
@@ -286,14 +279,16 @@ class dng_bilinear_pattern
 		
 	private:
 	
+		DNG_ATTRIB_NO_SANITIZE("unsigned-integer-overflow")
 		uint32 DeltaRow (uint32 row, int32 delta)
 			{
-			return (row + fPatRows + delta) % fPatRows;
+			return (row + fPatRows + (uint32) delta) % fPatRows;
 			}
 			
+		DNG_ATTRIB_NO_SANITIZE("unsigned-integer-overflow")
 		uint32 DeltaCol (uint32 col, int32 delta)
 			{
-			return (col + fPatCols + delta) % fPatCols;
+			return (col + fPatCols + (uint32) delta) % fPatCols;
 			}
 	
 		real32 LinearWeight1 (int32 d1, int32 d2)
@@ -328,7 +323,7 @@ void dng_bilinear_pattern::Calculate (const dng_mosaic_info &info,
 						  			  int32 rowStep,
 						  			  int32 colStep)
 	{
-
+	
 	uint32 j;
 	uint32 k;
 	uint32 patRow;
@@ -340,7 +335,7 @@ void dng_bilinear_pattern::Calculate (const dng_mosaic_info &info,
 	
 	fPatRows = info.fCFAPatternSize.v * fScale.v;
 	fPatCols = info.fCFAPatternSize.h * fScale.h;
-
+	
 	// See if we need to scale up just while computing the kernels.
 	
 	dng_point tempScale (1, 1);
@@ -361,7 +356,7 @@ void dng_bilinear_pattern::Calculate (const dng_mosaic_info &info,
 			 [kMaxPattern];
 			  
 	uint8 planeColor = info.fCFAPlaneColor [dstPlane];
-
+	
 	switch (info.fCFALayout)
 		{
 		
@@ -379,7 +374,7 @@ void dng_bilinear_pattern::Calculate (const dng_mosaic_info &info,
 					}
 					
 				}
-
+			
 			break;
 			
 			}
@@ -594,7 +589,7 @@ void dng_bilinear_pattern::Calculate (const dng_mosaic_info &info,
 		}
 	
 	// Find kernel for each patten entry.
-
+	
 	for (patRow = 0; patRow < fPatRows; patRow += tempScale.v)
 		{
 		
@@ -607,7 +602,7 @@ void dng_bilinear_pattern::Calculate (const dng_mosaic_info &info,
 			
 			if (map [patRow] [patCol])
 				{
-		
+				
 				kernel.Add (dng_point (0, 0), 1.0f);
 				
 				continue;
@@ -641,7 +636,7 @@ void dng_bilinear_pattern::Calculate (const dng_mosaic_info &info,
 				kernel.Add (dng_point ( 0, -1), 0.25f);
 				kernel.Add (dng_point ( 0,  1), 0.25f);
 				kernel.Add (dng_point ( 1,  0), 0.25f);
-		
+				
 				continue;
 				
 				}
@@ -649,7 +644,7 @@ void dng_bilinear_pattern::Calculate (const dng_mosaic_info &info,
 			// N & S.
 			
 			if (mapN && mapS)
-				{		
+				{
 				
 				kernel.Add (dng_point (-1,  0), 0.5f);
 				kernel.Add (dng_point ( 1,  0), 0.5f);
@@ -736,7 +731,7 @@ void dng_bilinear_pattern::Calculate (const dng_mosaic_info &info,
 				
 				}
 			
-			// NW & SE	
+			// NW & SE
 			
 			if (mapNW && mapSE)
 				{
@@ -768,7 +763,7 @@ void dng_bilinear_pattern::Calculate (const dng_mosaic_info &info,
 			while (!mapV [DeltaRow (patRow, dv1)])
 				{
 				dv1--;
-				}		
+				}
 				
 			while (!mapV [DeltaRow (patRow, dv2)])
 				{
@@ -801,7 +796,7 @@ void dng_bilinear_pattern::Calculate (const dng_mosaic_info &info,
 						LinearWeight2 (dh1, dh2) * w1);
 			
 			dh1 = 0;
-			dh2 = 0;	
+			dh2 = 0;
 			
 			while (!map [v2] [DeltaCol (patCol, dh1)])
 				{
@@ -1125,7 +1120,8 @@ dng_fast_interpolator::dng_fast_interpolator (const dng_mosaic_info &info,
 											  const dng_point &downScale,
 											  uint32 srcPlane)
 	
-	:	dng_filter_task (srcImage,
+	:	dng_filter_task ("dng_fast_interpolator",
+						 srcImage,
 						 dstImage)
 	
 	,	fInfo       (info     )
@@ -1288,7 +1284,7 @@ void dng_fast_interpolator::ProcessArea (uint32 /* threadIndex */,
 				{
 				
 				uint32 t = total [plane];
-				uint32 c = count [plane];
+				uint32 c = Max_uint32 (count [plane], 1);
 				
 				dPtr [plane * dstPlaneStep] = (uint16) ((t + (c >> 1)) / c);
 				
@@ -1345,7 +1341,7 @@ void dng_mosaic_info::Parse (dng_host & /* host */,
 	
 	// Find main image IFD.
 	
-	dng_ifd &rawIFD = *info.fIFD [info.fMainIndex].Get ();
+	dng_ifd &rawIFD = *info.fIFD [info.fMainIndex];
 	
 	// This information only applies to CFA images.
 	
@@ -1533,10 +1529,10 @@ bool dng_mosaic_info::IsSafeDownScale (const dng_point &downScale) const
 	test.v = Min_int32 (downScale.v, fCFAPatternSize.v);
 	test.h = Min_int32 (downScale.h, fCFAPatternSize.h);
 		
-	for (int32 phaseV = 0; phaseV <= fCFAPatternSize.v - test.v; phaseV++)
+	for (int32 phaseV = 0; phaseV < fCFAPatternSize.v; phaseV++)
 		{
 		
-		for (int32 phaseH = 0; phaseH <= fCFAPatternSize.h - test.h; phaseH++)
+		for (int32 phaseH = 0; phaseH < fCFAPatternSize.h; phaseH++)
 			{
 			
 			uint32 plane;
@@ -1556,8 +1552,8 @@ bool dng_mosaic_info::IsSafeDownScale (const dng_point &downScale) const
 				for (int32 srcCol = 0; srcCol < test.h; srcCol++)
 					{
 					
-					uint8 srcKey = fCFAPattern [srcRow + phaseV]
-											   [srcCol + phaseH];
+					uint8 srcKey = fCFAPattern [(srcRow + phaseV) % fCFAPatternSize.v]
+											   [(srcCol + phaseH) % fCFAPatternSize.h];
 											   
 					for (plane = 0; plane < fColorPlanes; plane++)
 						{
@@ -1820,18 +1816,17 @@ void dng_mosaic_info::InterpolateGeneric (dng_host &host,
 	
 	// Allocate source buffer.
 	
-	dng_pixel_buffer srcBuffer;
+	dng_pixel_buffer srcBuffer (dng_rect (srcTileSize), 
+								srcPlane, 
+								1,
+								srcImage.PixelType (), 
+								pcInterleaved, 
+								NULL);
 	
-	srcBuffer.fPlane = srcPlane;
-	
-	srcBuffer.fRowStep = srcTileSize.h;
-
-	srcBuffer.fPixelType = srcImage.PixelType ();
-	srcBuffer.fPixelSize = srcImage.PixelSize ();
-	
-	uint32 srcBufferSize = srcBuffer.fPixelSize *
-						   srcBuffer.fRowStep *
-						   srcTileSize.v;
+	uint32 srcBufferSize = ComputeBufferSize (srcBuffer.fPixelType,
+											  srcTileSize, 
+											  srcBuffer.fPlanes,
+											  padNone);
 	
 	AutoPtr<dng_memory_block> srcData (host.Allocate (srcBufferSize));
 	
@@ -1839,19 +1834,17 @@ void dng_mosaic_info::InterpolateGeneric (dng_host &host,
 	
 	// Allocate destination buffer.
 	
-	dng_pixel_buffer dstBuffer;
+	dng_pixel_buffer dstBuffer (dng_rect (dstTileSize), 
+								0, 
+								fColorPlanes,
+								dstImage.PixelType (), 
+								pcRowInterleaved, 
+								NULL);
 	
-	dstBuffer.fPlanes = fColorPlanes;
-	
-	dstBuffer.fRowStep   = dstTileSize.h * fColorPlanes;
-	dstBuffer.fPlaneStep = dstTileSize.h;
-	
-	dstBuffer.fPixelType = dstImage.PixelType ();
-	dstBuffer.fPixelSize = dstImage.PixelSize ();
-	
-	uint32 dstBufferSize = dstBuffer.fPixelSize *
-						   dstBuffer.fRowStep *
-						   dstTileSize.v;
+	uint32 dstBufferSize = ComputeBufferSize (dstBuffer.fPixelType,
+											  dstTileSize, 
+											  dstBuffer.fPlanes,
+											  padNone);
 	
 	AutoPtr<dng_memory_block> dstData (host.Allocate (dstBufferSize));
 	
@@ -1960,8 +1953,23 @@ void dng_mosaic_info::Interpolate (dng_host &host,
 							  	   const dng_image &srcImage,
 								   dng_image &dstImage,
 								   const dng_point &downScale,
-								   uint32 srcPlane) const
+								   uint32 srcPlane,
+                                   dng_matrix *scaleTransforms) const
 	{
+    
+    if (scaleTransforms && downScale != dng_point (1, 1))
+        {
+        
+        for (uint32 plane = 0; plane < dstImage.Planes (); plane++)
+            {
+        
+            scaleTransforms [plane] = dng_matrix_3by3 (1.0 / downScale.v, 0.0, 0.0,
+                                                       0.0, 1.0 / downScale.h, 0.0,
+                                                       0.0, 0.0, 1.0);
+                
+            }
+        
+        }
 	
 	if (downScale == dng_point (1, 1))
 		{
@@ -1985,6 +1993,15 @@ void dng_mosaic_info::Interpolate (dng_host &host,
 						 srcPlane);
 		
 		}
+	
+	}
+
+/*****************************************************************************/
+
+bool dng_mosaic_info::SupportsPreservedBlackLevels () const
+	{
+	
+	return false;
 	
 	}
 

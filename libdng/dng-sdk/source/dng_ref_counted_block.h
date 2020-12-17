@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_ref_counted_block.h#2 $ */ 
-/* $DateTime: 2012/07/31 22:04:34 $ */
-/* $Change: 840853 $ */
-/* $Author: tknoll $ */
 
 /** Support for a refcounted block, with optional copy-on-write
  */
@@ -23,6 +18,8 @@
 
 #include "dng_types.h"
 #include "dng_mutex.h"
+
+#include <mutex>
 
 /*****************************************************************************/
 
@@ -39,16 +36,16 @@ class dng_ref_counted_block
 		struct header
 			{
 
-			dng_mutex fMutex;
+			dng_std_mutex fMutex;
 
 			uint32 fRefCount;
 				
 			uint32 fSize;
 
 			header (uint32 size)
-				: fMutex ("dng_ref_counted_block")
-				, fRefCount (1)
-				, fSize (size)
+				:   fMutex    ()
+				,   fRefCount (1)
+				,   fSize     (size)
 				{
 				}
 
@@ -62,7 +59,6 @@ class dng_ref_counted_block
 		
 	public:
 	
-		
 		/// Construct an empty memory buffer using malloc.
 		/// \exception dng_memory_full with fErrorCode equal to dng_error_memory.
 
@@ -104,14 +100,14 @@ class dng_ref_counted_block
 		/// Return pointer to allocated memory as a void *..
 		/// \retval void * valid for as many bytes as were allocated.
 
-		uint32 LogicalSize ()
+		uint32 LogicalSize () const
 			{
-			return ((header *)fBuffer)->fSize;
+			return fBuffer ? ((header *) fBuffer)->fSize : 0;
 			}
 
 		void * Buffer ()
 			{
-			return (void *)((char *)fBuffer + sizeof (header));
+			return fBuffer ? (void *) ((char *) fBuffer + sizeof (header)) : NULL;
 			}
 		
 		/// Return pointer to allocated memory as a const void *.
@@ -119,7 +115,7 @@ class dng_ref_counted_block
 
 		const void * Buffer () const
 			{
-			return (const void *)((char *)fBuffer + sizeof (header));
+			return fBuffer ? (const void *) ((char *) fBuffer + sizeof (header)) : NULL;
 			}
 		
 		/// Return pointer to allocated memory as a char *.

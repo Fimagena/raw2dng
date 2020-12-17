@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2008-2009 Adobe Systems Incorporated
+// Copyright 2008-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_gain_map.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_gain_map.h"
@@ -18,6 +11,7 @@
 #include "dng_exceptions.h"
 #include "dng_globals.h"
 #include "dng_host.h"
+#include "dng_negative.h"
 #include "dng_pixel_buffer.h"
 #include "dng_stream.h"
 #include "dng_tag_values.h"
@@ -136,12 +130,17 @@ dng_gain_map_interpolator::dng_gain_map_interpolator (const dng_gain_map &map,
 	else
 		{
 		
-		fRowIndex1 = (uint32) rowIndexF;
+		if (fMap.Points ().v < 1)
+			{
+			ThrowProgramError ("Empty gain map");
+			}
+
+		uint32 lastRow = static_cast<uint32> (fMap.Points ().v - 1);
 		
-		if ((int32) fRowIndex1 >= fMap.Points ().v - 1)
+		if (rowIndexF >= static_cast<real64> (lastRow))
 			{
 			
-			fRowIndex1 = fMap.Points ().v - 1;
+			fRowIndex1 = lastRow;
 			fRowIndex2 = fRowIndex1;
 			
 			fRowFract = 0.0f;
@@ -151,6 +150,11 @@ dng_gain_map_interpolator::dng_gain_map_interpolator (const dng_gain_map &map,
 		else
 			{
 			
+			// If we got here, we know that rowIndexF can safely be converted to
+			// a uint32 and that static_cast<uint32> (rowIndexF) < lastRow. This
+			// implies fRowIndex2 <= lastRow below.
+
+			fRowIndex1 = static_cast<uint32> (rowIndexF);
 			fRowIndex2 = fRowIndex1 + 1;
 			
 			fRowFract = (real32) (rowIndexF - (real64) fRowIndex1);
@@ -195,12 +199,17 @@ void dng_gain_map_interpolator::ResetColumn ()
 	else
 		{
 	
-		uint32 colIndex = (uint32) colIndexF;
+		if (fMap.Points ().h < 1)
+			{
+			ThrowProgramError ("Empty gain map");
+			}
+
+		uint32 lastCol = static_cast<uint32> (fMap.Points ().h - 1);
 		
-		if ((int32) colIndex >= fMap.Points ().h - 1)
+		if (colIndexF >= static_cast<real64> (lastCol))
 			{
 			
-			fValueBase = InterpolateEntry (fMap.Points ().h - 1);
+			fValueBase = InterpolateEntry (lastCol);
 			
 			fValueStep = 0.0f;
 			
@@ -211,6 +220,13 @@ void dng_gain_map_interpolator::ResetColumn ()
 		else
 			{
 			
+			// If we got here, we know that colIndexF can safely be converted
+			// to a uint32 and that static_cast<uint32> (colIndexF) < lastCol.
+			// This implies colIndex + 1 <= lastCol, i.e. the argument to
+			// InterpolateEntry() below is valid.
+
+			uint32 colIndex = static_cast<uint32> (colIndexF);
+
 			real64 base  = InterpolateEntry (colIndex);
 			real64 delta = InterpolateEntry (colIndex + 1) - base;
 			
@@ -231,6 +247,7 @@ void dng_gain_map_interpolator::ResetColumn ()
 
 /*****************************************************************************/
 
+DNG_ATTRIB_NO_SANITIZE("unsigned-integer-overflow")
 dng_gain_map::dng_gain_map (dng_memory_allocator &allocator,
 							const dng_point &points,
 							const dng_point_real64 &spacing,
@@ -248,9 +265,10 @@ dng_gain_map::dng_gain_map (dng_memory_allocator &allocator,
 	
 	{
 	
-	fBuffer.Reset (allocator.Allocate (fPoints.v *
-									   fPoints.h *
-									   fPlanes * (uint32) sizeof (real32)));
+	fBuffer.Reset (allocator.Allocate (ComputeBufferSize (ttFloat, 
+														  fPoints, 
+														  fPlanes, 
+														  padSIMDBytes)));
 	
 	}
 					  
@@ -523,7 +541,7 @@ void dng_opcode_GainMap::PutData (dng_stream &stream) const
 		
 /*****************************************************************************/
 
-void dng_opcode_GainMap::ProcessArea (dng_negative & /* negative */,
+void dng_opcode_GainMap::ProcessArea (dng_negative &negative,
 									  uint32 /* threadIndex */,
 									  dng_pixel_buffer &buffer,
 									  const dng_rect &dstArea,
@@ -534,10 +552,29 @@ void dng_opcode_GainMap::ProcessArea (dng_negative & /* negative */,
 	
 	if (overlap.NotEmpty ())
 		{
-		
+  
+        uint16 blackLevel = (Stage () >= 2) ? negative.Stage3BlackLevel () : 0;
+        
+        real32 blackScale1  = 1.0f;
+        real32 blackScale2  = 1.0f;
+        real32 blackOffset1 = 0.0f;
+        real32 blackOffset2 = 0.0f;
+
+        if (blackLevel != 0)
+            {
+            
+            blackOffset2 = ((real32) blackLevel) / 65535.0f;
+            blackScale2  = 1.0f - blackOffset2;
+            blackScale1  = 1.0f / blackScale2;
+            blackOffset1 = 1.0f - blackScale1;
+            
+            }
+        
 		uint32 cols = overlap.W ();
 		
 		uint32 colPitch = fAreaSpec.ColPitch ();
+		
+		colPitch = Min_uint32 (colPitch, cols);
 		
 		for (uint32 plane = fAreaSpec.Plane ();
 			 plane < fAreaSpec.Plane () + fAreaSpec.Planes () &&
@@ -557,7 +594,19 @@ void dng_opcode_GainMap::ProcessArea (dng_negative & /* negative */,
 												  row,
 												  overlap.l,
 												  mapPlane);
-										   
+              
+                if (blackLevel != 0)
+                    {
+                    
+                    for (uint32 col = 0; col < cols; col += colPitch)
+                        {
+
+                        dPtr [col] = dPtr [col] * blackScale1 + blackOffset1;
+                                
+                        }
+                        
+                    }
+                    
 				for (uint32 col = 0; col < cols; col += colPitch)
 					{
 					
@@ -572,6 +621,18 @@ void dng_opcode_GainMap::ProcessArea (dng_negative & /* negative */,
 					
 					}
 				
+                if (blackLevel != 0)
+                    {
+                    
+                    for (uint32 col = 0; col < cols; col += colPitch)
+                        {
+
+                        dPtr [col] = dPtr [col] * blackScale2 + blackOffset2;
+                            
+                        }
+                        
+                    }
+                    
 				}
 			
 			}

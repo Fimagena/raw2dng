@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006-2008 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_pixel_buffer.h#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Support for holding buffers of sample data.
@@ -24,6 +19,7 @@
 
 #include "dng_assertions.h"
 #include "dng_rect.h"
+#include "dng_safe_arithmetic.h"
 #include "dng_tag_types.h"
 
 /*****************************************************************************/
@@ -125,13 +121,55 @@ class dng_pixel_buffer
 							  int32 col,
 					  	      uint32 plane = 0) const
 			{
+
+            // TO DO: review this. do we set up buffers sometimes with "col" parameter
+            // equal to 0, which would then cause this exception to throw?!
+
+            #if 0
+
+			// Ensure pixel to be accessed lies inside valid area.
+			if (row < fArea.t || row >= fArea.b ||
+				col < fArea.l || col >= fArea.r ||
+				plane < fPlane || (plane - fPlane) >= fPlanes)
+				{
+				ThrowProgramError ("Out-of-range pixel access");
+				}
+			
+			// Compute offset of pixel.
+			const int64 rowOffset = SafeInt64Mult(fRowStep,
+				static_cast<int64> (row) - static_cast<int64> (fArea.t));
+			const int64 colOffset = SafeInt64Mult(fColStep,
+				static_cast<int64> (col) - static_cast<int64> (fArea.l));
+			const int64 planeOffset = SafeInt64Mult(fPlaneStep,
+				static_cast<int64> (plane - fPlane));
+			const int64 offset = SafeInt64Mult(static_cast<int64>(fPixelSize),
+				SafeInt64Add(SafeInt64Add(rowOffset, colOffset), planeOffset));
+			
+			// Add offset to buffer base address.
+			return static_cast<void *> (static_cast<uint8 *> (fData) + offset);
+
+            #else
+
+			#if qDNG64Bit
 			
 			return (void *)
-				   (((uint8 *) fData) + (int32)fPixelSize *
-					(fRowStep   * (row   - fArea.t) +
-					 fColStep   * (col   - fArea.l) +
-					 fPlaneStep * (int32)(plane - fPlane )));
+				   (((uint8 *) fData) + (int64) fPixelSize *
+					(fRowStep	* (int64) (row	 - fArea.t) +
+					 fColStep	* (int64) (col	 - fArea.l) +
+					 fPlaneStep * (int64) (plane - fPlane )));
 			
+			#else
+
+			return (void *)
+				   (((uint8 *) fData) + (int32) fPixelSize *
+					(fRowStep	* (int32) (row	 - fArea.t) +
+					 fColStep	* (int32) (col	 - fArea.l) +
+					 fPlaneStep * (int32) (plane - fPlane )));
+
+			#endif
+
+            #endif
+
 			}
 			
 		#if qDebugPixelType
@@ -143,6 +181,31 @@ class dng_pixel_buffer
 	public:
 	
 		dng_pixel_buffer ();
+		
+		/// Note: This constructor is for internal use only and should not be
+		/// considered part of the DNG SDK API.
+		///
+		/// Initialize the pixel buffer according to the given parameters (see
+		/// below). May throw an error if arithmetic overflow occurs when
+		/// computing the row, column or plane step, or if an invalid value
+		/// was passed for planarConfiguration.
+		///
+		/// \param area Area covered by the pixel buffer
+		/// \param plane Index of the first plane
+		/// \param planes Number of planes
+		/// \param pixelType Pixel data type (one of the values defined in
+		///		   dng_tag_types.h)
+		/// \param planarConfiguration Layout of the pixel planes in memory: One
+		///		   of pcInterleaved, pcPlanar, or pcRowInterleaved (defined in
+		///		   dng_tag_values.h)
+		/// \param data Pointer to the pixel data
+
+		dng_pixel_buffer (const dng_rect &area, 
+						  uint32 plane, 
+						  uint32 planes,
+						  uint32 pixelType, 
+						  uint32 planarConfiguration,
+						  void *data);
 		
 		dng_pixel_buffer (const dng_pixel_buffer &buffer);
 		
@@ -235,6 +298,17 @@ class dng_pixel_buffer
 			return (const uint8 *) ConstPixel (row, col, plane);
 			
 			}
+
+		const uint8 * ConstPixel_uint8_overrideType (int32 row,
+										int32 col,
+										uint32 plane = 0) const
+			{
+			
+			// No type check
+
+			return (const uint8 *) ConstPixel (row, col, plane);
+			
+			}
 			
 		/// Get a writable uint8 * to pixel data starting at a specific pixel in the buffer.
 		/// \param row Start row for buffer pointer.
@@ -248,6 +322,17 @@ class dng_pixel_buffer
 			{
 			
 			ASSERT_PIXEL_TYPE (ttByte);
+
+			return (uint8 *) DirtyPixel (row, col, plane);
+			
+			}
+
+		uint8 * DirtyPixel_uint8_overrideType (int32 row,
+								  int32 col,
+								  uint32 plane = 0)
+			{
+			
+			// No type check
 
 			return (uint8 *) DirtyPixel (row, col, plane);
 			
@@ -568,7 +653,6 @@ class dng_pixel_buffer
 
 		/// Initialize a rectangular area of pixel buffer to zeros.
 		/// \param area Rectangle of pixel buffer to zero.
-		/// \param area Area to zero
 		/// \param plane Plane to start filling on.
 		/// \param planes Number of planes to fill.
 

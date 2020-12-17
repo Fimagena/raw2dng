@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_lossless_jpeg.cpp#2 $ */ 
-/* $DateTime: 2012/06/01 07:28:57 $ */
-/* $Change: 832715 $ */
-/* $Author: tknoll $ */
- 
 /*****************************************************************************/
 
 // Lossless JPEG code adapted from:
@@ -249,7 +242,13 @@ static void FixHuffTbl (HuffmanTable *htbl)
             
      		int32 ul = (size < 8 ? ll | bitMask [24 + size]
      						     : ll);
-            	
+
+			if (ul >= static_cast<int32> (sizeof(htbl->numbits) / sizeof (htbl->numbits [0])) ||
+				ul >= static_cast<int32> (sizeof(htbl->value  ) / sizeof (htbl->value	[0])))
+				{
+				ThrowBadFormat ();
+				}
+				
             for (i = ll; i <= ul; i++)
             	{
                 htbl->numbits [i] = size;
@@ -366,7 +365,7 @@ typedef ComponentType *MCU;  		// MCU - array of samples
 
 /*****************************************************************************/
 
-class dng_lossless_decoder
+class dng_lossless_decoder: private dng_uncopyable
 	{
 	
 	private:
@@ -409,6 +408,15 @@ class dng_lossless_decoder
 						uint32 &imageChannels);
 
 		void FinishRead ();
+		
+		#if qSupportHasselblad_3FR
+	
+		bool IsHasselblad3FR ()
+			{
+			return fHasselblad3FR;
+			}
+		
+		#endif
 
 	private:
 
@@ -479,12 +487,6 @@ class dng_lossless_decoder
 		void DecodeFirstRow (MCU *curRowBuf);
 
 		void DecodeImage ();
-		
-		// Hidden copy constructor and assignment operator.
-		
-		dng_lossless_decoder (const dng_lossless_decoder &decoder);
-		
-		dng_lossless_decoder & operator= (const dng_lossless_decoder &decoder);
 		
 	};
 
@@ -751,8 +753,11 @@ void dng_lossless_decoder::GetSof (int32 /*code*/)
     	
     // Allocate per component info.
     
-    compInfoBuffer.Allocate (info.numComponents *
-    					     (uint32) sizeof (JpegComponentInfo));
+    // We can cast info.numComponents to a uint32 because the check above
+    // guarantees that it cannot be negative.
+
+    compInfoBuffer.Allocate (static_cast<uint32> (info.numComponents),
+                             sizeof (JpegComponentInfo));
     
     info.compInfo = (JpegComponentInfo *) compInfoBuffer.Buffer ();
     							 
@@ -1200,7 +1205,8 @@ void dng_lossless_decoder::DecoderStructInit ()
 	
     // Prepare array describing MCU composition.
 
-	if (info.compsInScan > 4)
+	if (info.compsInScan < 0 || 
+		info.compsInScan > 4)
 		{
     	ThrowBadFormat ();
 		}
@@ -1213,16 +1219,19 @@ void dng_lossless_decoder::DecoderStructInit ()
 	// Initialize mucROW1 and mcuROW2 which buffer two rows of
     // pixels for predictor calculation.
     
+	// This multiplication cannot overflow because info.compsInScan is
+	// guaranteed to be between 0 and 4 inclusive (see checks above).
+
 	int32 mcuSize = info.compsInScan * (uint32) sizeof (ComponentType);
 	
-	mcuBuffer1.Allocate (info.imageWidth * (uint32) sizeof (MCU));
-	mcuBuffer2.Allocate (info.imageWidth * (uint32) sizeof (MCU));
+	mcuBuffer1.Allocate (info.imageWidth, sizeof (MCU));
+	mcuBuffer2.Allocate (info.imageWidth, sizeof (MCU));
 	
 	mcuROW1 = (MCU *) mcuBuffer1.Buffer ();
 	mcuROW2 = (MCU *) mcuBuffer2.Buffer ();
 	
-	mcuBuffer3.Allocate (info.imageWidth * mcuSize);
-	mcuBuffer4.Allocate (info.imageWidth * mcuSize);
+	mcuBuffer3.Allocate (info.imageWidth, mcuSize);
+	mcuBuffer4.Allocate (info.imageWidth, mcuSize);
  	
  	mcuROW1 [0] = (ComponentType *) mcuBuffer3.Buffer ();
  	mcuROW2 [0] = (ComponentType *) mcuBuffer4.Buffer ();
@@ -1469,10 +1478,47 @@ inline void dng_lossless_decoder::FillBitBuffer (int32 nbits)
 		while (bitsLeft < kMinGetBits)
 			{
 			
-			int32 c0 = GetJpegChar ();
-			int32 c1 = GetJpegChar ();
-			int32 c2 = GetJpegChar ();
-			int32 c3 = GetJpegChar ();
+			int32 c0 = 0;
+			int32 c1 = 0;
+			int32 c2 = 0;
+			int32 c3 = 0;
+			
+			try
+				{
+				c0 = GetJpegChar ();
+				c1 = GetJpegChar ();
+				c2 = GetJpegChar ();
+				c3 = GetJpegChar ();
+				}
+				
+			catch (dng_exception &except)
+				{
+				
+				// If we got any exception other than EOF, rethrow.
+				
+				if (except.ErrorCode () != dng_error_end_of_file)
+					{
+					throw except;
+					}
+					
+				// Some Hasselblad files now use the JPEG end of image marker.
+				// If we DIDN'T hit that, rethrow.
+				// This sequence also sometimes occurs in the image data, so
+				// we can't simply check for it and exit - we need to wait until
+				// we throw the EOF and then look to see if we had it.
+					
+				// Look for the marker in c1 and c2 as well.
+				// (if we get it in c2 and c3, we won't throw.)
+				
+				if (!((c0 == 0xFF && c1 == 0xD9) ||
+					  (c1 == 0xFF && c2 == 0xD9)))
+					{
+					throw except;
+					}
+				
+				// Swallow the case where we hit EOF with the JPEG EOI marker.
+					
+				}
 			
 			getBuffer = (getBuffer << 8) | c3;
 			getBuffer = (getBuffer << 8) | c2;
@@ -1560,6 +1606,11 @@ inline void dng_lossless_decoder::flush_bits (int32 nbits)
 
 inline int32 dng_lossless_decoder::get_bits (int32 nbits)
 	{
+	
+	if (nbits > 16)
+		{
+		ThrowBadFormat ();
+		}
 	
 	if (bitsLeft < nbits)
 		FillBitBuffer (nbits);
@@ -1664,6 +1715,7 @@ inline int32 dng_lossless_decoder::HuffDecode (HuffmanTable *htbl)
  *--------------------------------------------------------------
  */
 
+DNG_ATTRIB_NO_SANITIZE("undefined")
 inline void dng_lossless_decoder::HuffExtend (int32 &x, int32 s)
 	{
 	
@@ -1847,6 +1899,8 @@ void dng_lossless_decoder::DecodeImage ()
     // Precompute the decoding table for each table.
     
     HuffmanTable *ht [4];
+
+	memset (ht, 0, sizeof (ht));
     
 	for (int32 curComp = 0; curComp < compsInScan; curComp++)
     	{
@@ -2263,7 +2317,7 @@ void dng_lossless_decoder::DecodeImage ()
 	
 	#if qSupportHasselblad_3FR
 	
-	if (info.Ss == 8)
+	if (info.Ss == 8 && (numCOL & 1) == 0)
 		{
 		
 		fHasselblad3FR = true;
@@ -2398,7 +2452,7 @@ void dng_lossless_decoder::DecodeImage ()
         // For the rest of the column on this row, predictor
         // calculations are based on PSV. 
 
-     	if (compsInScan == 2 && info.Ss == 1)
+     	if (compsInScan == 2 && info.Ss == 1 && numCOL > 1)
     		{
     		
     		// This is the combination used by both the Canon and Kodak raw formats. 
@@ -2556,7 +2610,8 @@ void DecodeLosslessJPEG (dng_stream &stream,
 					     dng_spooler &spooler,
 					     uint32 minDecodedSize,
 					     uint32 maxDecodedSize,
-						 bool bug16)
+						 bool bug16,
+						 uint64 endOfData)
 	{
 	
 	dng_lossless_decoder decoder (&stream,
@@ -2583,6 +2638,33 @@ void DecodeLosslessJPEG (dng_stream &stream,
 		}
 	
 	decoder.FinishRead ();
+	
+	uint64 streamPos = stream.Position ();
+	
+	if (streamPos > endOfData)
+		{
+		
+		bool throwBadFormat = true;
+		
+		// Per Hasselblad's request:
+		// If we have a Hassy file with exactly four extra bytes,
+		// let it through; the file is likely still valid.
+		
+		#if qSupportHasselblad_3FR
+		
+		if (decoder.IsHasselblad3FR () &&
+			streamPos - endOfData == 4)
+			{
+			throwBadFormat = false;
+			}
+			
+		#endif
+		
+		if (throwBadFormat)
+			{
+			ThrowBadFormat ();
+			}
+		}
 	
 	}
 
@@ -2961,7 +3043,7 @@ void dng_lossless_encoder::FreqCountSet ()
 		
 		// Initialize predictors for this row.
 		
-		int32 predictor [4];
+		int32 predictor [4] = { 0, 0, 0, 0 };
 		
 		for (int32 channel = 0; channel < (int32)fSrcChannels; channel++)
 			{
@@ -3067,7 +3149,7 @@ void dng_lossless_encoder::HuffEncode ()
 		
 		// Initialize predictors for this row.
 		
-		int32 predictor [4];
+		int32 predictor [4] = { 0, 0, 0, 0 };
 		
 		for (int32 channel = 0; channel < (int32)fSrcChannels; channel++)
 			{
@@ -3280,9 +3362,7 @@ void dng_lossless_encoder::GenHuffCoding (HuffmanTable *htbl, uint32 *freq)
 			if (codesize [i] > MAX_CLEN)
 				{
        
-       			DNG_REPORT ("Huffman code size table overflow");
-       			
-       			ThrowProgramError ();
+       			ThrowOverflow ("Huffman code size table overflow");
        			
        			}
 

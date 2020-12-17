@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006-2008 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_classes.h#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
 
 /*** \file
  * Forward class declarations to avoid having to include many .h files in most places.
@@ -26,7 +21,10 @@ class dng_1d_function;
 class dng_1d_table;
 class dng_abort_sniffer;
 class dng_area_task;
+class dng_area_task_progress;
+class dng_base_tile_iterator;
 class dng_basic_tag_set;
+class dng_big_table;
 class dng_camera_profile;
 class dng_camera_profile_id;
 class dng_camera_profile_info;
@@ -47,6 +45,8 @@ class dng_iptc;
 class dng_jpeg_image;
 class dng_jpeg_preview;
 class dng_linearization_info;
+class dng_local_string;
+class dng_look_table;
 class dng_matrix;
 class dng_matrix_3by3;
 class dng_matrix_4by3;
@@ -74,8 +74,12 @@ class dng_raw_preview;
 class dng_read_image;
 class dng_rect;
 class dng_rect_real64;
+class dng_ref_counted_block;
 class dng_render;
+class dng_resample_function;
 class dng_resolution;
+class dng_rgb_table;
+class dng_set_minimum_priority;
 class dng_shared;
 class dng_spline_solver;
 class dng_srational;
@@ -92,6 +96,10 @@ class dng_vector_3;
 class dng_xmp;
 class dng_xmp_sdk;
 class dng_xy_coord;
+
+/*****************************************************************************/
+
+struct dng_xmp_namespace;
 
 /*****************************************************************************/
 

@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_tag_values.h#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #ifndef __dng_tag_values__
@@ -38,11 +31,23 @@ enum
 	// Transparency mask
 	
 	sfTransparencyMask			= 4,
-	
-	// Preview Transparency mask
+        
+	// Preview (reduced resolution raw) transparency mask.
 	
 	sfPreviewMask				= sfPreviewImage + sfTransparencyMask,
 	
+    // Depth map.
+    
+    sfDepthMap                  = 8,
+        
+    // Preview (reduced resolution raw) depth map.
+        
+    sfPreviewDepthMap           = sfPreviewImage + sfDepthMap,
+    
+    // Enhanced image (processed stage 3).
+    
+    sfEnhancedImage             = 16,
+        
 	// Preview image for non-primary settings.
 	
 	sfAltPreviewImage			= 0x10001
@@ -68,8 +73,10 @@ enum
 
 	piCFA						= 32803,		// TIFF-EP spec
 
-	piLinearRaw					= 34892
+	piLinearRaw					= 34892,
 
+    piDepth                     = 51177
+        
 	};
 
 /******************************************************************************/
@@ -82,7 +89,20 @@ enum
 	pcInterleaved				= 1,
 	pcPlanar					= 2,
 	
-	pcRowInterleaved			= 100000		// Internal use only
+	// Ordering, using an RGB image as an example:
+	//
+	// RRRRRRRRRR
+	// GGGGGGGGGG
+	// BBBBBBBBBB
+	// RRRRRRRRRR
+	// GGGGGGGGGG
+	// BBBBBBBBBB
+	//
+	// The "AlignSIMD" variant additionally ensures that the offset of each
+	// plane's row is aligned to an integer multiple of SIMD vector width (16
+	// or 32) bytes from the beginning of the buffer.
+	pcRowInterleaved			= 100000,		// Internal use only
+	pcRowInterleavedAlignSIMD	= 100001		// Internal use only
 	
 	};
 
@@ -125,6 +145,11 @@ enum
 	ccOldJPEG					= 6,
 	ccJPEG						= 7,
 	ccDeflate					= 8,
+
+	#if qDNGSupportVC5
+	ccVc5						= 9,
+	#endif	// qDNGSupportVC5
+
 	ccPackBits					= 32773,
 	ccOldDeflate				= 32946,
 	
@@ -421,6 +446,34 @@ enum
 
 /*****************************************************************************/
 
+// Values for the DepthFormat tag.
+
+enum
+    {
+    depthFormatUnknown              = 0,
+    depthFormatLinear               = 1,
+    depthFormatInverse              = 2
+    };
+
+// Values for the DepthUnits tag.
+
+enum
+    {
+    depthUnitsUnknown               = 0,
+    depthUnitsMeters                = 1
+    };
+
+// Values for DepthMeasureType tag.
+
+enum
+    {
+    depthMeasureUnknown             = 0,
+    depthMeasureOpticalAxis         = 1,
+    depthMeasureOpticalRay          = 2
+    };
+
+/*****************************************************************************/
+
 // TIFF-style byte order markers.
 
 enum
@@ -466,10 +519,11 @@ enum
 	dngVersion_1_2_0_0			= 0x01020000,
 	dngVersion_1_3_0_0			= 0x01030000,
 	dngVersion_1_4_0_0			= 0x01040000,
+    dngVersion_1_5_0_0          = 0x01050000,
+
+	dngVersion_Current			= dngVersion_1_5_0_0,
 	
-	dngVersion_Current			= dngVersion_1_4_0_0,
-	
-	dngVersion_SaveDefault		= dngVersion_Current
+	dngVersion_SaveDefault		= dngVersion_1_4_0_0
 	
 	};
 

@@ -1,20 +1,14 @@
 /*****************************************************************************/
-// Copyright 2006-2008 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
 
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_matrix.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
-/*****************************************************************************/
-
 #include "dng_matrix.h"
 
+#include "dng_assertions.h"
 #include "dng_exceptions.h"
 #include "dng_utils.h"
 
@@ -172,6 +166,32 @@ bool dng_matrix::IsDiagonal () const
 
 /******************************************************************************/
 
+bool dng_matrix::IsIdentity () const
+	{
+    
+    if (IsDiagonal ())
+        {
+        
+        for (uint32 j = 0; j < Rows (); j++)
+            {
+                
+            if (fData [j] [j] != 1.0)
+                {
+                return false;
+                }
+             
+            }
+            
+        return true;
+			
+        }
+        
+    return false;
+	
+	}
+
+/******************************************************************************/
+
 real64 dng_matrix::MaxEntry () const
 	{
 	
@@ -286,6 +306,50 @@ void dng_matrix::SafeRound (real64 factor)
 		}
 		
 	}
+
+/*****************************************************************************/
+
+bool dng_matrix::AlmostEqual (const dng_matrix &m,
+                              real64 slop) const
+    {
+    
+    if (Rows () != m.Rows () ||
+        Cols () != m.Cols ())
+        {
+        return false;
+        }
+        
+	for (uint32 j = 0; j < Rows (); j++)
+		{
+        
+		for (uint32 k = 0; k < Cols (); k++)
+			{
+            
+            if (Abs_real64 (fData [j] [k] - m [j] [k]) > slop)
+                {
+                return false;
+                }
+            
+            }
+            
+        }
+			
+    return true;
+    
+    }
+
+/*****************************************************************************/
+
+bool dng_matrix::AlmostIdentity (real64 slop) const
+    {
+    
+    dng_matrix m;
+    
+    m.SetIdentity (Rows ());
+    
+    return AlmostEqual (m, slop);
+    
+    }
 
 /*****************************************************************************/
 
@@ -412,6 +476,112 @@ dng_matrix_4by3::dng_matrix_4by3 (real64 a00, real64 a01, real64 a02,
 
 /*****************************************************************************/
 				
+dng_matrix_4by4::dng_matrix_4by4 ()
+
+	:	dng_matrix (4, 4)
+	
+	{
+
+	}
+		
+/*****************************************************************************/
+
+dng_matrix_4by4::dng_matrix_4by4 (const dng_matrix &m)
+
+	:	dng_matrix (m)
+	
+	{
+
+	// Input must be either 3x3 or 4x4.
+
+	const bool is3by3 = (m.Rows () == 3 &&
+						 m.Cols () == 3);
+	
+	const bool is4by4 = (m.Rows () == 4 &&
+						 m.Cols () == 4);
+
+	if (!is3by3 && !is4by4)
+		{
+		
+		ThrowMatrixMath ();
+
+		}
+
+	// For 3x3 case, pad to 4x4 (equivalent 4x4 matrix).
+	
+	if (is3by3)
+		{		
+
+		fRows = 4;
+		fCols = 4;
+
+		fData [0] [3] = 0.0;
+		fData [1] [3] = 0.0;
+		fData [2] [3] = 0.0;
+
+		fData [3] [0] = 0.0;
+		fData [3] [1] = 0.0;
+		fData [3] [2] = 0.0;
+
+		fData [3] [3] = 1.0;
+		
+		}
+	
+	}
+		
+/*****************************************************************************/
+
+dng_matrix_4by4::dng_matrix_4by4 (real64 a00, real64 a01, real64 a02, real64 a03,
+								  real64 a10, real64 a11, real64 a12, real64 a13,
+								  real64 a20, real64 a21, real64 a22, real64 a23,
+								  real64 a30, real64 a31, real64 a32, real64 a33)
+
+	:	dng_matrix (4, 4)
+	
+	{
+	
+	fData [0] [0] = a00;
+	fData [0] [1] = a01;
+	fData [0] [2] = a02;
+	fData [0] [3] = a03;
+	
+	fData [1] [0] = a10;
+	fData [1] [1] = a11;
+	fData [1] [2] = a12;
+	fData [1] [3] = a13;
+	
+	fData [2] [0] = a20;
+	fData [2] [1] = a21;
+	fData [2] [2] = a22;
+	fData [2] [3] = a23;
+	
+	fData [3] [0] = a30;
+	fData [3] [1] = a31;
+	fData [3] [2] = a32;
+	fData [3] [3] = a33;
+	
+	}
+
+/*****************************************************************************/
+
+dng_matrix_4by4::dng_matrix_4by4 (real64 a00, 
+								  real64 a11, 
+								  real64 a22, 
+								  real64 a33)
+
+	:	dng_matrix (4, 4)
+	
+	{
+	
+	fData [0] [0] = a00;
+	fData [1] [1] = a11;
+	fData [2] [2] = a22;
+	fData [3] [3] = a33;
+	
+	}
+
+/*****************************************************************************/
+
 dng_vector::dng_vector ()
 
 	:	fCount (0)
@@ -851,6 +1021,35 @@ dng_matrix operator+ (const dng_matrix &A,
 
 /******************************************************************************/
 
+dng_vector operator- (const dng_vector &a,
+					  const dng_vector &b)
+	{
+
+	uint32 count = a.Count ();
+	
+	DNG_REQUIRE (count == b.Count (), 
+				 "Mismatch count in Dot");
+
+	if (!count)
+		{
+		return dng_vector ();
+		}
+
+	dng_vector result (count);
+
+	for (uint32 i = 0; i < count; i++)
+		{
+		
+		result [i] = a [i] - b [i];
+		
+		}
+
+	return result;
+	
+	}
+
+/******************************************************************************/
+
 const real64 kNearZero = 1.0E-10; 
 
 /******************************************************************************/
@@ -925,9 +1124,13 @@ static dng_matrix InvertNbyN (const dng_matrix &A)
 	uint32 j;
 	uint32 k;
 	
-	uint32 n = A.Rows ();
-	
+	const uint32 n = A.Rows ();
+
+	const uint32 augmented_cols = 2 * n;
+
 	real64 temp [kMaxColorPlanes] [kMaxColorPlanes * 2];
+
+	memset (temp, 0, sizeof (temp));
 	
 	for (i = 0; i < n; i++)
 		for (j = 0; j < n; j++)
@@ -941,8 +1144,26 @@ static dng_matrix InvertNbyN (const dng_matrix &A)
 			
 	for (i = 0; i < n; i++)
 		{
-		
-		real64 alpha = temp [i] [i];
+
+		// Find row iMax with largest absolute entry in column i.
+
+		uint32 iMax =  i;
+		real64 vMax = -1.0;
+
+		for (k = i; k < n; k++)
+			{
+			
+			real64 v = Abs_real64 (A [k] [i]);
+
+			if (v > vMax)
+				{
+				vMax = v;
+				iMax = k;
+				}
+			
+			}
+
+		real64 alpha = temp [iMax] [i];
 		
 		if (Abs_real64 (alpha) < kNearZero)
 			{
@@ -951,7 +1172,22 @@ static dng_matrix InvertNbyN (const dng_matrix &A)
 						 
 			}
 			
-		for (j = 0; j < n * 2; j++)
+		// Swap rows i and iMax, column by column.
+
+		if (i != iMax)
+			{
+
+			for (j = 0; j < augmented_cols; j++)
+				{
+
+				std::swap (temp [i	 ] [j], 
+						   temp [iMax] [j]);
+
+				}
+
+			}
+
+		for (j = 0; j < augmented_cols; j++)
 			{
 			
 			temp [i] [j] /= alpha;
@@ -966,7 +1202,7 @@ static dng_matrix InvertNbyN (const dng_matrix &A)
 				
 				real64 beta = temp [k] [i];
 				
-				for (j = 0; j < n * 2; j++)
+				for (j = 0; j < augmented_cols; j++)
 					{
 					
 					temp [k] [j] -= beta * temp [i] [j];
@@ -1077,4 +1313,41 @@ dng_matrix Invert (const dng_matrix &A,
 	
 	}
 	
+/*****************************************************************************/
+
+real64 Dot (const dng_vector &a,
+			const dng_vector &b)
+	{
+	
+	DNG_REQUIRE (a.Count () == b.Count (),
+				 "Cannot take dot product between vectors of different size.");
+	
+	// DNG_REQUIRE (a.Count () > 0,
+	// 			 "Cannot take dot product with an empty vector.");
+
+	real64 sum = 0.0;
+
+	for (uint32 j = 0; j < a.Count (); j++)
+		{
+		
+		sum += (a [j] * b [j]);
+		
+		}
+
+	return sum;
+	
+	}
+
+/*****************************************************************************/
+
+real64 Distance (const dng_vector &a,
+				 const dng_vector &b)
+	{
+	
+	dng_vector c = a - b;
+
+	return sqrt (Dot (c, c));
+	
+	}
+
 /*****************************************************************************/

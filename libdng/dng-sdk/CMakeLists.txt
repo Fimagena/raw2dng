@@ -17,6 +17,7 @@ ADD_LIBRARY( dng-sdk STATIC
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_abort_sniffer.cpp
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_area_task.cpp
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_bad_pixels.cpp
+             ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_big_table.cpp
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_bottlenecks.cpp
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_camera_profile.cpp
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_color_space.cpp
@@ -39,6 +40,7 @@ ADD_LIBRARY( dng-sdk STATIC
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_jpeg_image.cpp
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_lens_correction.cpp
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_linearization_info.cpp
+             ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_local_string.cpp
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_lossless_jpeg.cpp
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_matrix.cpp
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_memory.cpp
@@ -62,6 +64,7 @@ ADD_LIBRARY( dng-sdk STATIC
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_reference.cpp
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_render.cpp
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_resample.cpp
+             ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_safe_arithmetic.cpp
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_shared.cpp
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_simple_image.cpp
              ${CMAKE_CURRENT_SOURCE_DIR}/source/dng_spline.cpp

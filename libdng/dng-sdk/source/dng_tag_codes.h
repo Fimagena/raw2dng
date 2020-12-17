@@ -1,20 +1,17 @@
 /*****************************************************************************/
-// Copyright 2006-2011 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
 
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_tag_codes.h#3 $ */ 
-/* $DateTime: 2012/05/31 13:27:06 $ */
-/* $Change: 832568 $ */
-/* $Author: tknoll $ */
+#ifndef __dng_tag_codes__
+#define __dng_tag_codes__
 
 /*****************************************************************************/
 
-#ifndef __dng_tag_codes__
-#define __dng_tag_codes__
+#include "dng_flags.h"
 
 /*****************************************************************************/
 
@@ -78,9 +75,12 @@
 // http://partners.adobe.com/asn/tech/tiff/tiffregister.jsp
 // on 2011-10-25, purpose "Digital Negative".
 
-// TIFF tags number 51125 registered at:
+// TIFF tag number 51125 registered at:
 // http://partners.adobe.com/asn/tech/tiff/tiffregister.jsp
 // on 2012-05-31, purpose "Digital Negative".
+
+// TIFF tags numbers 51177 through 51191 registered at:
+// Manual update on 2018-06-17, purpose "Digital Negative".
 
 /*****************************************************************************/
 
@@ -161,7 +161,7 @@ enum
 	tcExposureProgram				= 34850,
 	tcSpectralSensitivity			= 34852,
 	tcGPSInfo						= 34853,
-	tcISOSpeedRatings				= 34855, 	// EXIF 2.3: PhotographicSensitivity.
+	tcISOSpeedRatings				= 34855,	// EXIF 2.3: PhotographicSensitivity.
 	tcOECF							= 34856,
 	tcInterlace						= 34857,
 	tcTimeZoneOffset				= 34858,
@@ -175,6 +175,9 @@ enum
 	tcExifVersion					= 36864,
 	tcDateTimeOriginal				= 36867,
 	tcDateTimeDigitized				= 36868,
+    tcOffsetTime                    = 36880,
+    tcOffsetTimeOriginal            = 36881,
+    tcOffsetTimeDigitized           = 36882,
 	tcComponentsConfiguration		= 37121,
 	tcCompressedBitsPerPixel		= 37122,
 	tcShutterSpeedValue				= 37377,
@@ -190,7 +193,7 @@ enum
 	tcFlashEnergy					= 37387,
 	tcSpatialFrequencyResponse		= 37388,
 	tcNoise							= 37389,
-	tcFocalPlaneXResolution 		= 37390,
+	tcFocalPlaneXResolution			= 37390,
 	tcFocalPlaneYResolution			= 37391,
 	tcFocalPlaneResolutionUnit		= 37392,
 	tcImageNumber					= 37393,
@@ -206,6 +209,12 @@ enum
 	tcSubsecTimeOriginal			= 37521,
 	tcSubsecTimeDigitized			= 37522,
 	tcAdobeLayerData				= 37724,
+    tcTemperature                   = 37888,
+    tcHumidity                      = 37889,
+    tcPressure                      = 37890,
+    tcWaterDepth                    = 37891,
+    tcAcceleration                  = 37892,
+    tcCameraElevationAngle          = 37893,
 	tcFlashPixVersion				= 40960,
 	tcColorSpace					= 40961,
 	tcPixelXDimension				= 40962,
@@ -213,12 +222,12 @@ enum
 	tcRelatedSoundFile				= 40964,
 	tcInteroperabilityIFD			= 40965,
 	tcFlashEnergyExif				= 41483,
-	tcSpatialFrequencyResponseExif 	= 41484,
+	tcSpatialFrequencyResponseExif	= 41484,
 	tcFocalPlaneXResolutionExif		= 41486,
 	tcFocalPlaneYResolutionExif		= 41487,
 	tcFocalPlaneResolutionUnitExif	= 41488,
 	tcSubjectLocation				= 41492,
-	tcExposureIndexExif			    = 41493,
+	tcExposureIndexExif				= 41493,
 	tcSensingMethodExif				= 41495,
 	tcFileSource					= 41728,
 	tcSceneType						= 41729,
@@ -294,7 +303,7 @@ enum
 	tcCurrentPreProfileMatrix		= 50834,
 	tcColorimetricReference			= 50879,
 	tcCameraCalibrationSignature	= 50931,
-	tcProfileCalibrationSignature  	= 50932,
+	tcProfileCalibrationSignature	= 50932,
 	tcExtraCameraProfiles			= 50933,
 	tcAsShotProfileName				= 50934,
 	tcNoiseReductionApplied			= 50935,
@@ -335,6 +344,12 @@ enum
 	tcCacheBlob						= 51113,
 	tcCacheVersion					= 51114,
 	tcDefaultUserCrop				= 51125,
+    tcDepthFormat                   = 51177,
+    tcDepthNear                     = 51178,
+    tcDepthFar                      = 51179,
+    tcDepthUnits                    = 51180,
+    tcDepthMeasureType              = 51181,
+    tcEnhanceParams                 = 51182,
 	tcKodakKDCPrivateIFD			= 65024
 	};
 
@@ -398,7 +413,10 @@ enum
 	tcPanasonicRAW,
 	tcFoveonX3F,
 	tcJPEG,
-	tcAdobePSD
+	tcAdobePSD,
+	tcPNG,
+	tcHEIC,
+	tcCanonCR3
 	
 	};
 
@@ -464,19 +482,19 @@ enum JpegMarker
 	
 	M_TEM = 0x01,
 
-	M_SOF0  = 0xc0,
-	M_SOF1  = 0xc1,
-	M_SOF2  = 0xc2,
-	M_SOF3  = 0xc3,
-	M_DHT   = 0xc4,
-	M_SOF5  = 0xc5,
-	M_SOF6  = 0xc6,
-	M_SOF7  = 0xc7,
-	M_JPG   = 0xc8,
-	M_SOF9  = 0xc9,
+	M_SOF0	= 0xc0,
+	M_SOF1	= 0xc1,
+	M_SOF2	= 0xc2,
+	M_SOF3	= 0xc3,
+	M_DHT	= 0xc4,
+	M_SOF5	= 0xc5,
+	M_SOF6	= 0xc6,
+	M_SOF7	= 0xc7,
+	M_JPG	= 0xc8,
+	M_SOF9	= 0xc9,
 	M_SOF10 = 0xca,
 	M_SOF11 = 0xcb,
-	M_DAC   = 0xcc,
+	M_DAC	= 0xcc,
 	M_SOF13 = 0xcd,
 	M_SOF14 = 0xce,
 	M_SOF15 = 0xcf,
@@ -499,16 +517,16 @@ enum JpegMarker
 	M_DHP = 0xde,
 	M_EXP = 0xdf,
 
-	M_APP0  = 0xe0,
-	M_APP1  = 0xe1,
-	M_APP2  = 0xe2,
-	M_APP3  = 0xe3,
-	M_APP4  = 0xe4,
-	M_APP5  = 0xe5,
-	M_APP6  = 0xe6,
-	M_APP7  = 0xe7,
-	M_APP8  = 0xe8,
-	M_APP9  = 0xe9,
+	M_APP0	= 0xe0,
+	M_APP1	= 0xe1,
+	M_APP2	= 0xe2,
+	M_APP3	= 0xe3,
+	M_APP4	= 0xe4,
+	M_APP5	= 0xe5,
+	M_APP6	= 0xe6,
+	M_APP7	= 0xe7,
+	M_APP8	= 0xe8,
+	M_APP9	= 0xe9,
 	M_APP10 = 0xea,
 	M_APP11 = 0xeb,
 	M_APP12 = 0xec,
@@ -516,21 +534,21 @@ enum JpegMarker
 	M_APP14 = 0xee,
 	M_APP15 = 0xef,
 
-	M_JPG0  = 0xf0,
-	M_JPG1  = 0xf1,
-	M_JPG2  = 0xf2,
-	M_JPG3  = 0xf3,
-	M_JPG4  = 0xf4,
-	M_JPG5  = 0xf5,
-	M_JPG6  = 0xf6,
-	M_JPG7  = 0xf7,
-	M_JPG8  = 0xf8,
-	M_JPG9  = 0xf9,
+	M_JPG0	= 0xf0,
+	M_JPG1	= 0xf1,
+	M_JPG2	= 0xf2,
+	M_JPG3	= 0xf3,
+	M_JPG4	= 0xf4,
+	M_JPG5	= 0xf5,
+	M_JPG6	= 0xf6,
+	M_JPG7	= 0xf7,
+	M_JPG8	= 0xf8,
+	M_JPG9	= 0xf9,
 	M_JPG10 = 0xfa,
 	M_JPG11 = 0xfb,
 	M_JPG12 = 0xfc,
 	M_JPG13 = 0xfd,
-	M_COM   = 0xfe,
+	M_COM	= 0xfe,
 
 	M_ERROR = 0x100
 	

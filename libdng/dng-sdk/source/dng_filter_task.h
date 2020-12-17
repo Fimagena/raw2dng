@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_filter_task.h#2 $ */ 
-/* $DateTime: 2012/07/11 10:36:56 $ */
-/* $Change: 838485 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Specialization of dng_area_task for processing an area from one dng_image to an
@@ -52,6 +47,7 @@ class dng_filter_task: public dng_area_task
 		uint32 fDstPixelType;
 		
 		dng_point fSrcRepeat;
+		dng_point fSrcTileSize;
 		
 		AutoPtr<dng_memory_block> fSrcBuffer [kMaxMPThreads];
 		AutoPtr<dng_memory_block> fDstBuffer [kMaxMPThreads];
@@ -62,7 +58,8 @@ class dng_filter_task: public dng_area_task
 		/// \param srcImage Image from which source pixels are read.
 		/// \param dstImage Image to which result pixels are written.
 
-		dng_filter_task (const dng_image &srcImage,
+		dng_filter_task (const char *name,
+						 const dng_image &srcImage,
 						 dng_image &dstImage);
 							   
 		virtual ~dng_filter_task ();
@@ -125,6 +122,7 @@ class dng_filter_task: public dng_area_task
 		/// progress.
 
 		virtual void Start (uint32 threadCount,
+							const dng_rect &dstArea,
 							const dng_point &tileSize,
 							dng_memory_allocator *allocator,
 							dng_abort_sniffer *sniffer);

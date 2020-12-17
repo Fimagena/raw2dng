@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2011 Adobe Systems Incorporated
+// Copyright 2011-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_jpeg_image.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_jpeg_image.h"
@@ -23,7 +16,10 @@
 #include "dng_image.h"
 #include "dng_image_writer.h"
 #include "dng_memory_stream.h"
-#include "dng_mutex.h"
+#include "dng_safe_arithmetic.h"
+#include "dng_uncopyable.h"
+
+#include <atomic>
 
 /*****************************************************************************/
 
@@ -41,7 +37,8 @@ dng_jpeg_image::dng_jpeg_image ()
 
 /*****************************************************************************/
 
-class dng_jpeg_image_encode_task : public dng_area_task
+class dng_jpeg_image_encode_task : public dng_area_task,
+								   private dng_uncopyable
 	{
 	
 	private:
@@ -58,9 +55,7 @@ class dng_jpeg_image_encode_task : public dng_area_task
 		
 		const dng_ifd &fIFD;
 				
-		dng_mutex fMutex;
-		
-		uint32 fNextTileIndex;
+		std::atomic_uint fNextTileIndex;
 		
 	public:
 	
@@ -70,14 +65,15 @@ class dng_jpeg_image_encode_task : public dng_area_task
 									dng_jpeg_image &jpegImage,
 									uint32 tileCount,
 									const dng_ifd &ifd)
+
+			:	dng_area_task ("dng_jpeg_image_encode_task")
 		
-			:	fHost			  (host)
+			,	fHost			  (host)
 			,	fWriter			  (writer)
 			,	fImage			  (image)
 			,	fJPEGImage        (jpegImage)
 			,	fTileCount		  (tileCount)
 			,	fIFD		      (ifd)
-			,	fMutex			  ("dng_jpeg_image_encode_task")
 			,	fNextTileIndex	  (0)
 			
 			{
@@ -98,9 +94,9 @@ class dng_jpeg_image_encode_task : public dng_area_task
 			AutoPtr<dng_memory_block> subTileBlockBuffer;
 			AutoPtr<dng_memory_block> tempBuffer;
 			
-			uint32 uncompressedSize = fIFD.fTileLength *
-									  fIFD.fTileWidth  *
-									  fIFD.fSamplesPerPixel;
+			uint32 uncompressedSize = SafeUint32Mult (fIFD.fTileLength, 
+													  fIFD.fTileWidth, 
+													  fIFD.fSamplesPerPixel);
 			
 			uncompressedBuffer.Reset (fHost.Allocate (uncompressedSize));
 			
@@ -108,22 +104,16 @@ class dng_jpeg_image_encode_task : public dng_area_task
 	
 			while (true)
 				{
+
+				// Note: fNextTileIndex is atomic
 				
-				uint32 tileIndex;
-				
+				uint32 tileIndex = fNextTileIndex++;
+
+				if (tileIndex >= fTileCount)
 					{
-					
-					dng_lock_mutex lock (&fMutex);
-					
-					if (fNextTileIndex == fTileCount)
-						{
-						return;
-						}
-						
-					tileIndex = fNextTileIndex++;
-										
+					return;
 					}
-					
+
 				dng_abort_sniffer::SniffForAbort (sniffer);
 				
 				uint32 rowIndex = tileIndex / tilesAcross;
@@ -142,21 +132,14 @@ class dng_jpeg_image_encode_task : public dng_area_task
 								   compressedBuffer,
 								   uncompressedBuffer,
 								   subTileBlockBuffer,
-								   tempBuffer);
+								   tempBuffer,
+                                   true);
 								  
 				fJPEGImage.fJPEGData [tileIndex].Reset (stream.AsMemoryBlock (fHost.Allocator ()));
 					
 				}
 			
 			}
-		
-	private:
-
-		// Hidden copy constructor and assignment operator.
-
-		dng_jpeg_image_encode_task (const dng_jpeg_image_encode_task &);
-
-		dng_jpeg_image_encode_task & operator= (const dng_jpeg_image_encode_task &);
 		
 	};
 
@@ -197,10 +180,10 @@ void dng_jpeg_image::Encode (dng_host &host,
 	fTileSize.h = ifd.fTileWidth;
 	fTileSize.v = ifd.fTileLength;
 	
-	// Need a higher quality for raw proxies than non-raw proxies,
-	// since users often perform much greater color changes.  Also, use
-	// we are targeting a "large" size proxy (larger than 5MP pixels), or this
-	// is a full size proxy, then use a higher quality.
+	// Need a higher quality for raw proxies than non-raw proxies, since users
+	// often perform much greater color changes. Also, if we are targeting a
+	// "large" size proxy (larger than 5 MP), or this is a full size proxy,
+	// then use a higher quality.
 	
 	bool useHigherQuality = (uint64) ifd.fImageWidth *
 							(uint64) ifd.fImageLength > 5000000 ||
@@ -239,7 +222,8 @@ void dng_jpeg_image::Encode (dng_host &host,
 			
 /*****************************************************************************/
 
-class dng_jpeg_image_find_digest_task : public dng_area_task
+class dng_jpeg_image_find_digest_task : public dng_area_task,
+										private dng_uncopyable
 	{
 	
 	private:
@@ -250,20 +234,19 @@ class dng_jpeg_image_find_digest_task : public dng_area_task
 		
 		dng_fingerprint *fDigests;
 				
-		dng_mutex fMutex;
-		
-		uint32 fNextTileIndex;
+		std::atomic_uint fNextTileIndex;
 		
 	public:
 	
 		dng_jpeg_image_find_digest_task (const dng_jpeg_image &jpegImage,
 										 uint32 tileCount,
 										 dng_fingerprint *digests)
+
+			:	dng_area_task ("dng_jpeg_image_find_digest_task")
 		
-			:	fJPEGImage        (jpegImage)
+			,	fJPEGImage        (jpegImage)
 			,	fTileCount		  (tileCount)
 			,	fDigests		  (digests)
-			,	fMutex			  ("dng_jpeg_image_find_digest_task")
 			,	fNextTileIndex	  (0)
 			
 			{
@@ -282,19 +265,13 @@ class dng_jpeg_image_find_digest_task : public dng_area_task
 			while (true)
 				{
 				
-				uint32 tileIndex;
+				// Note: fNextTileIndex is atomic
 				
+				uint32 tileIndex = fNextTileIndex++;
+
+				if (tileIndex >= fTileCount)
 					{
-					
-					dng_lock_mutex lock (&fMutex);
-					
-					if (fNextTileIndex == fTileCount)
-						{
-						return;
-						}
-						
-					tileIndex = fNextTileIndex++;
-										
+					return;
 					}
 					
 				dng_abort_sniffer::SniffForAbort (sniffer);
@@ -309,14 +286,6 @@ class dng_jpeg_image_find_digest_task : public dng_area_task
 				}
 			
 			}
-		
-	private:
-
-		// Hidden copy constructor and assignment operator.
-
-		dng_jpeg_image_find_digest_task (const dng_jpeg_image_find_digest_task &);
-
-		dng_jpeg_image_find_digest_task & operator= (const dng_jpeg_image_find_digest_task &);
 		
 	};
 

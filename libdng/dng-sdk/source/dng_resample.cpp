@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_resample.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_resample.h"
@@ -22,6 +15,7 @@
 #include "dng_image.h"
 #include "dng_memory.h"
 #include "dng_pixel_buffer.h"
+#include "dng_safe_arithmetic.h"
 #include "dng_tag_types.h"
 #include "dng_utils.h"
 
@@ -94,9 +88,19 @@ void dng_resample_coords::Initialize (int32 srcOrigin,
 	
 	fOrigin = dstOrigin;
 	
-	uint32 dstEntries = RoundUp8 (dstCount);
-	
-	fCoords.Reset (allocator.Allocate (dstEntries * (uint32) sizeof (int32)));
+	uint32 dstEntries = 0;
+	uint32 bufferSize = 0;
+
+	if (!RoundUpUint32ToMultiple (dstCount, 8, &dstEntries) ||
+	    !SafeUint32Mult (dstEntries, sizeof (int32), &bufferSize)) 
+		{
+
+		ThrowOverflow ("Arithmetic overflow computing size for coordinate "
+					   "buffer");
+
+		}
+
+	fCoords.Reset (allocator.Allocate (bufferSize));
 	
 	int32 *coords = fCoords->Buffer_int32 ();
 	
@@ -170,20 +174,39 @@ void dng_resample_weights::Initialize (real64 scale,
 	
 	// Round to each set to weights to a multiple of 8 entries.
 	
-	fWeightStep = RoundUp8 (width);
+	if (!RoundUpUint32ToMultiple (width, 8, &fWeightStep))
+		{
+		
+		ThrowOverflow ("Arithmetic overflow computing fWeightStep");
+		
+		}
 	
 	// Allocate and zero weight tables.
 	
-	fWeights32.Reset (allocator.Allocate (fWeightStep *
-										  kResampleSubsampleCount *
-										  (uint32) sizeof (real32)));
+	uint32 bufferSize = 0;
+	
+	if (!SafeUint32Mult (fWeightStep, kResampleSubsampleCount, &bufferSize) ||
+		!SafeUint32Mult (bufferSize, (uint32) sizeof (real32), &bufferSize))
+		{
+		
+		ThrowOverflow ("Arithmetic overflow computing buffer size.");
+		
+		}
+	
+	fWeights32.Reset (allocator.Allocate (bufferSize));
 	
 	DoZeroBytes (fWeights32->Buffer		 (),
 				 fWeights32->LogicalSize ());
 				 
-	fWeights16.Reset (allocator.Allocate (fWeightStep *
-										  kResampleSubsampleCount *
-										  (uint32) sizeof (int16)));
+	if (!SafeUint32Mult (fWeightStep, kResampleSubsampleCount, &bufferSize) ||
+		!SafeUint32Mult (bufferSize, (uint32) sizeof (int16), &bufferSize))
+		{
+		
+		ThrowOverflow ("Arithmetic overflow computing buffer size.");
+		
+		}
+		
+	fWeights16.Reset (allocator.Allocate (bufferSize));
 									  
 	DoZeroBytes (fWeights16->Buffer		 (),
 				 fWeights16->LogicalSize ());
@@ -206,7 +229,7 @@ void dng_resample_weights::Initialize (real64 scale,
 			for (j = 0; j < width; j++)
 				{
 				
-				int32 k = j - fRadius + 1;
+				int32 k = (int32) j - (int32) fRadius + 1;
 				
 				real64 x = (k - fract) * scale;
 				
@@ -293,28 +316,50 @@ void dng_resample_weights_2d::Initialize (const dng_resample_function &kernel,
 	
 	// Width is twice the radius.
 	
-	const uint32 width    = fRadius * 2;
-	const uint32 widthSqr = width * width;
+	uint32 width	= 0;
+	uint32 widthSqr = 0;
+	uint32 step		= 0;
 	
-	const uint32 step = RoundUp8 (width * width);
+	if (!SafeUint32Mult (fRadius, 2, &width) ||
+		!SafeUint32Mult (width, width, &widthSqr) ||
+		!RoundUpUint32ToMultiple (widthSqr, 8, &step) ||
+		!SafeUint32Mult (step, kResampleSubsampleCount2D, &fRowStep))
+		{
 
-	fRowStep = step * kResampleSubsampleCount2D;
+		ThrowOverflow ("Arithmetic overflow computing row step.");
+	
+		}
+
 	fColStep = step;
 	
 	// Allocate and zero weight tables.
 	
-	fWeights32.Reset (allocator.Allocate (step * 
-										  kResampleSubsampleCount2D *
-										  kResampleSubsampleCount2D *
-										  (uint32) sizeof (real32)));
+	uint32 bufferSize = 0;
+
+	if (!SafeUint32Mult (step, kResampleSubsampleCount2D, &bufferSize) ||
+		!SafeUint32Mult (bufferSize, kResampleSubsampleCount2D, &bufferSize) ||
+		!SafeUint32Mult (bufferSize, (uint32) sizeof (real32), &bufferSize))
+		{
+		
+		ThrowOverflow ("Arithmetic overflow computing buffer size.");
+		
+		}
+	
+	fWeights32.Reset (allocator.Allocate (bufferSize));
 	
 	DoZeroBytes (fWeights32->Buffer		 (),
 				 fWeights32->LogicalSize ());
 				 
-	fWeights16.Reset (allocator.Allocate (step * 
-										  kResampleSubsampleCount2D *
-										  kResampleSubsampleCount2D *
-										  (uint32) sizeof (int16)));
+	if (!SafeUint32Mult (step, kResampleSubsampleCount2D, &bufferSize) ||
+		!SafeUint32Mult (bufferSize, kResampleSubsampleCount2D, &bufferSize) ||
+		!SafeUint32Mult (bufferSize, (uint32) sizeof (int16), &bufferSize))
+		{
+
+		ThrowOverflow ("Arithmetic overflow computing buffer size.");
+
+		}
+	
+	fWeights16.Reset (allocator.Allocate (bufferSize));
 									  
 	DoZeroBytes (fWeights16->Buffer		 (),
 				 fWeights16->LogicalSize ());
@@ -345,13 +390,13 @@ void dng_resample_weights_2d::Initialize (const dng_resample_function &kernel,
 				for (uint32 i = 0; i < width; i++)
 					{
 		
-					int32 yInt = ((int32) i) - fRadius + 1;
+					int32 yInt = ((int32) i) - (int32) fRadius + 1;
 					real64 yPos = yInt - yFract;
 
 					for (uint32 j = 0; j < width; j++)
 						{
 				
-						int32 xInt = ((int32) j) - fRadius + 1;
+						int32 xInt = ((int32) j) - (int32) fRadius + 1;
 						real64 xPos = xInt - xFract;
 
 						#if 0
@@ -468,6 +513,7 @@ class dng_resample_task: public dng_filter_task
 		virtual dng_point SrcTileSize (const dng_point &dstTileSize);
 			
 		virtual void Start (uint32 threadCount,
+							const dng_rect &dstArea,
 							const dng_point &tileSize,
 							dng_memory_allocator *allocator,
 							dng_abort_sniffer *sniffer);
@@ -486,7 +532,8 @@ dng_resample_task::dng_resample_task (const dng_image &srcImage,
 						   			  const dng_rect &dstBounds,
 									  const dng_resample_function &kernel)
 						   			  
-	:	dng_filter_task (srcImage,
+	:	dng_filter_task ("dng_resample_task",
+						 srcImage,
 						 dstImage)
 						   
 	,	fSrcBounds (srcBounds)
@@ -535,6 +582,7 @@ dng_resample_task::dng_resample_task (const dng_image &srcImage,
 							
 /*****************************************************************************/
 
+DNG_ATTRIB_NO_SANITIZE("unsigned-integer-overflow")
 dng_rect dng_resample_task::SrcArea (const dng_rect &dstArea)
 	{
 	
@@ -568,6 +616,7 @@ dng_point dng_resample_task::SrcTileSize (const dng_point & /* dstTileSize */)
 /*****************************************************************************/
 
 void dng_resample_task::Start (uint32 threadCount,
+							   const dng_rect &dstArea,
 							   const dng_point &tileSize,
 							   dng_memory_allocator *allocator,
 							   dng_abort_sniffer *sniffer)
@@ -605,7 +654,17 @@ void dng_resample_task::Start (uint32 threadCount,
 	
 	// Allocate temp buffers.
 	
-	uint32 tempBufferSize = RoundUp8 (fSrcTileSize.h) * (uint32) sizeof (real32);
+	uint32 tempBufferSize = 0;
+
+	if (!RoundUpUint32ToMultiple (fSrcTileSize.h, 8, &tempBufferSize) ||
+		!SafeUint32Mult (tempBufferSize,
+						 static_cast<uint32> (sizeof (real32)),
+						 &tempBufferSize))
+		{
+		
+		ThrowOverflow ("Arithmetic overflow computing buffer size.");
+		
+		}
 	
 	for (uint32 threadIndex = 0; threadIndex < threadCount; threadIndex++)
 		{
@@ -617,6 +676,7 @@ void dng_resample_task::Start (uint32 threadCount,
 	// Allocate the pixel buffers.
 
 	dng_filter_task::Start (threadCount,
+							dstArea,
 							tileSize,
 							allocator,
 							sniffer);

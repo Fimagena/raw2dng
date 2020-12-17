@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2012 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_utils.h#3 $ */ 
-/* $DateTime: 2012/06/14 20:24:41 $ */
-/* $Change: 835078 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #ifndef __dng_utils__
@@ -21,10 +14,16 @@
 #include "dng_classes.h"
 #include "dng_flags.h"
 #include "dng_memory.h"
+#include "dng_safe_arithmetic.h"
 #include "dng_types.h"
+#include "dng_uncopyable.h"
 
 /*****************************************************************************/
 
+// The unsigned integer overflow is intended here since a wrap around is used to
+// calculate the abs() in the branchless version.
+
+DNG_ATTRIB_NO_SANITIZE("unsigned-integer-overflow")
 inline uint32 Abs_int32 (int32 x)
 	{
 	
@@ -198,6 +197,24 @@ inline uint32 RoundUp16 (uint32 x)
 	
 	}
 
+inline uint32 RoundUp32 (uint32 x)
+	{
+	
+	return (x + 31) & (uint32) ~31;
+	
+	}
+
+inline uint32 RoundUpSIMD (uint32 x)
+	{
+
+	#if qDNGAVXSupport
+	return RoundUp32 (x);
+	#else
+	return RoundUp16 (x);
+	#endif
+	
+	}
+
 inline uint32 RoundUp4096 (uint32 x)
 	{
 	
@@ -235,32 +252,127 @@ inline uint32 RoundDown16 (uint32 x)
 	
 	}
 
-/******************************************************************************/
-
-inline uint32 RoundUpForPixelSize (uint32 x, uint32 pixelSize)
+inline uint32 RoundDown32 (uint32 x)
 	{
 	
+	return x & (uint32) ~31;
+	
+	}
+
+inline uint32 RoundDownSIMD (uint32 x)
+	{
+
+	#if qDNGAVXSupport
+	return RoundDown32 (x);
+	#else
+	return RoundDown16 (x);
+	#endif
+	
+	}
+
+/******************************************************************************/
+
+inline bool RoundUpForPixelSize (uint32 x, 
+								 uint32 pixelSize, 
+								 uint32 *result)
+	{
+
+	#if qDNGAVXSupport
+	static const uint32 kTargetMultiple = 32;
+	#else
+	static const uint32 kTargetMultiple = 16;
+	#endif
+
+	uint32 multiple;
+
 	switch (pixelSize)
 		{
 		
 		case 1:
-			return RoundUp16 (x);
-			
 		case 2:
-			return RoundUp8 (x);
-			
 		case 4:
-			return RoundUp4 (x);
-			
 		case 8:
-			return RoundUp2 (x);
+			{
+			multiple = kTargetMultiple / pixelSize;
+			break;
+			}
 			
 		default:
-			return RoundUp16 (x);
+			{
+			multiple = kTargetMultiple;
+			break;
+			}
 					
 		}
 	
+	return RoundUpUint32ToMultiple (x, multiple, result);
+
 	}
+
+/******************************************************************************/
+
+inline uint32 RoundUpForPixelSize (uint32 x,
+								   uint32 pixelSize)
+	{
+	
+	uint32 result = 0;
+
+	if (!RoundUpForPixelSize (x, pixelSize, &result))
+		{
+		ThrowOverflow ("RoundUpForPixelSize");
+		}
+
+	return result;
+	
+	}
+
+/******************************************************************************/
+
+inline int32 RoundUpForPixelSizeAsInt32 (uint32 x,
+										 uint32 pixelSize)
+	{
+	
+	uint32 result = 0;
+
+	if (!RoundUpForPixelSize (x, pixelSize, &result))
+		{
+		ThrowOverflow ("RoundUpForPixelSize");
+		}
+
+	dng_safe_uint32 safeResult (result);
+
+	return dng_safe_int32 (safeResult).Get ();
+	
+	}
+
+/******************************************************************************/
+
+// Type of padding to be performed by ComputeBufferSize.
+
+enum PaddingType
+	{
+
+	// Don't perform any padding.
+
+	padNone,
+
+	// Pad each scanline to an integer multiple of SIMD vector width (16 or
+	// 32) bytes (in the same way that RoundUpForPixelSize() does).
+
+	padSIMDBytes
+
+	};
+
+// Returns the number of bytes required for an image tile with the given pixel
+// type, tile size, number of image planes, and desired padding. Throws a
+// dng_exception with dng_error_memory error code if one of the components of
+// tileSize is negative or if arithmetic overflow occurs during the
+// computation.
+
+uint32 ComputeBufferSize (uint32 pixelType, 
+						  const dng_point &tileSize,
+						  uint32 numPlanes, 
+						  PaddingType paddingType);
 
 /******************************************************************************/
 
@@ -499,6 +611,7 @@ inline uint32 Floor_uint32 (real32 x)
 	
 	}
 
+DNG_ATTRIB_NO_SANITIZE("float-cast-overflow")
 inline uint32 Floor_uint32 (real64 x)
 	{
 	
@@ -738,7 +851,13 @@ real64 TickCountInSeconds ();
 
 /******************************************************************************/
 
-class dng_timer
+void DNGIncrementTimerLevel ();
+
+int32 DNGDecrementTimerLevel ();
+
+/******************************************************************************/
+
+class dng_timer: private dng_uncopyable
 	{
 
 	public:
@@ -747,14 +866,6 @@ class dng_timer
 
 		~dng_timer ();
 		
-	private:
-	
-		// Hidden copy constructor and assignment operator.
-	
-		dng_timer (const dng_timer &timer);
-		
-		dng_timer & operator= (const dng_timer &timer);
-
 	private:
 
 		const char *fMessage;
@@ -1148,6 +1259,7 @@ inline int32 Mulsh86 (int32 x, int32 y)
 // This is the ACM standard 30 bit generator:
 // x' = (x * 16807) mod 2^31-1
 
+DNG_ATTRIB_NO_SANITIZE("unsigned-integer-overflow")
 inline uint32 DNG_Random (uint32 seed)
 	{
 	
@@ -1173,7 +1285,7 @@ inline uint32 DNG_Random (uint32 seed)
 
 /*****************************************************************************/
 
-class dng_dither
+class dng_dither: private dng_uncopyable
 	{
 		
 	public:
@@ -1194,12 +1306,6 @@ class dng_dither
 
 		dng_dither ();
 
-		// Hidden copy constructor and assignment operator.
-	
-		dng_dither (const dng_dither &);
-		
-		dng_dither & operator= (const dng_dither &);
-		
 	public:
 
 		static const dng_dither & Get ();
@@ -1229,6 +1335,46 @@ void LimitFloatBitDepth (dng_host &host,
 						 dng_image &dstImage,
 						 uint32 bitDepth,
 						 real32 scale = 1.0f);
+
+/*****************************************************************************/
+
+#if qMacOS
+
+/*****************************************************************************/
+
+template<typename T>
+class CFReleaseHelper
+	{
+
+	private:
+
+		T fRef;
+
+	public:
+
+		CFReleaseHelper (T ref)
+			:	fRef (ref)
+			{
+			}
+
+		~CFReleaseHelper ()
+			{
+			if (fRef)
+				{
+				CFRelease (fRef);
+				}
+			}
+
+		T Get () const
+			{
+			return fRef;
+			}
+
+	};
+
+/*****************************************************************************/
+
+#endif	// qMacOS
 
 /*****************************************************************************/
 

@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006-2009 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_errors.h#2 $ */ 
-/* $DateTime: 2012/07/11 10:36:56 $ */
-/* $Change: 838485 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Error code values.
@@ -48,7 +43,8 @@ enum
 	dng_error_file_is_damaged,					//!< File is damaged in some way.
 	dng_error_image_too_big_dng,				//!< Image is too big to save as DNG.
 	dng_error_image_too_big_tiff,				//!< Image is too big to save as TIFF.
-	dng_error_unsupported_dng					//!< DNG version is unsupported.
+	dng_error_unsupported_dng,					//!< DNG version is unsupported.
+	dng_error_overflow							//!< Arithmetic overflow.
 	};
 	
 /*****************************************************************************/

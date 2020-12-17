@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2007 Adobe Systems Incorporated
+// Copyright 2007-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_hue_sat_map.h#2 $ */ 
-/* $DateTime: 2012/07/31 22:04:34 $ */
-/* $Change: 840853 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Table-based color correction data structure.
@@ -23,8 +18,12 @@
 /*****************************************************************************/
 
 #include "dng_classes.h"
+#include "dng_fingerprint.h"
 #include "dng_ref_counted_block.h"
+#include "dng_safe_arithmetic.h"
 #include "dng_types.h"
+
+#include <atomic>
 
 /*****************************************************************************/
 
@@ -39,9 +38,9 @@ class dng_hue_sat_map
 
 	public:
 
-		/// HSV delta signal. \param fHueShift is a delta value specified in degrees.
+		/// HSV delta signal. fHueShift is a delta value specified in degrees.
 		/// This parameter, added to the original hue, determines the output hue. A
-		/// value of 0 means no change. \param fSatScale and \param fValScale are
+		/// value of 0 means no change. fSatScale and fValScale are
 		/// scale factors that are applied to saturation and value components,
 		/// respectively. These scale factors, multiplied by the original saturation
 		/// and value, determine the output saturation and value. A scale factor of
@@ -62,6 +61,18 @@ class dng_hue_sat_map
 		
 		uint32 fHueStep;
 		uint32 fValStep;
+
+		// This fingerprint is intended to be used for certain rendering
+		// optimizations. Also, it can vary from session to session.
+		// In general, dng_hue_sat_map objects loaded from raw data
+		// will be given unique values for the session while dng_hue_sat_map
+		// objects derived from other dng_hue_sat_map objects will be
+		// given fingerprint values based on their inputs so that if they
+		// are recomputed, they get the same value (again, in that sesssion).
+
+		dng_fingerprint fRuntimeFingerprint;
+
+		static std::atomic<uint64> sRuntimeFingerprintCounter;
 
 		dng_ref_counted_block fDeltas;
 
@@ -118,6 +129,8 @@ class dng_hue_sat_map
 			
 			fHueStep = 0;
 			fValStep = 0;
+
+			fRuntimeFingerprint.Clear ();
 
 			fDeltas.Clear ();
 
@@ -183,9 +196,9 @@ class dng_hue_sat_map
 
 		uint32 DeltasCount () const
 			{
-			return fValDivisions *
-				   fHueDivisions *
-				   fSatDivisions;
+			return (dng_safe_uint32 (fValDivisions) *
+					dng_safe_uint32 (fHueDivisions) *
+					dng_safe_uint32 (fSatDivisions)).Get ();
 			}
 		
 		/// Direct read/write access to table entries. The entries are stored in
@@ -206,6 +219,22 @@ class dng_hue_sat_map
 		const HSBModify *GetConstDeltas () const
 			{
 			return (const HSBModify *) fDeltas.Buffer_real32 ();
+			}
+
+		void AssignNewUniqueRuntimeFingerprint ();
+
+		/// Set Fingerprint. Rare use cases want to set the fingerprint.
+
+		void SetRuntimeFingerprint (const dng_fingerprint fingerprint)
+			{
+			fRuntimeFingerprint = fingerprint;
+			}
+
+		/// Get the runtime fingerprint of this hue sat map.
+
+		const dng_fingerprint & RuntimeFingerprint () const
+			{
+			return fRuntimeFingerprint;
 			}
 
 		/// Equality test.

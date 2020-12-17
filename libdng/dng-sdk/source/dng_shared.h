@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2008 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_shared.h#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #ifndef __dng_shared__
@@ -21,6 +14,7 @@
 #include "dng_classes.h"
 #include "dng_fingerprint.h"
 #include "dng_matrix.h"
+#include "dng_memory.h"
 #include "dng_negative.h"
 #include "dng_rational.h"
 #include "dng_string.h"
@@ -28,8 +22,6 @@
 #include "dng_sdk_limits.h"
 #include "dng_types.h"
 #include "dng_xy_coord.h"
-
-#include <vector>
 
 /*****************************************************************************/
 
@@ -140,7 +132,7 @@ class dng_shared
 		
 		dng_camera_profile_info fCameraProfile;
 		
-		std::vector<dng_camera_profile_info> fExtraCameraProfiles;
+		dng_std_vector<dng_camera_profile_info> fExtraCameraProfiles;
 
 		dng_matrix fCameraCalibration1;
 		dng_matrix fCameraCalibration2;
@@ -155,7 +147,6 @@ class dng_shared
 		
 		dng_srational fBaselineExposure;
 		dng_urational fBaselineNoise;
-		dng_urational fNoiseReductionApplied;
 		dng_urational fBaselineSharpness;
 		dng_urational fLinearResponseLimit;
 		dng_urational fShadowScale;
@@ -192,14 +183,18 @@ class dng_shared
 
 		dng_string fAsShotProfileName;
 
-		dng_noise_profile fNoiseProfile;
-
 		dng_point fOriginalDefaultFinalSize;
 		dng_point fOriginalBestQualityFinalSize;
 		
 		dng_urational fOriginalDefaultCropSizeH;
 		dng_urational fOriginalDefaultCropSizeV;
-		
+  
+        uint32        fDepthFormat;
+		dng_urational fDepthNear;
+        dng_urational fDepthFar;
+        uint32        fDepthUnits;
+        uint32        fDepthMeasureType;
+        
 	public:
 	
 		dng_shared ();
@@ -224,20 +219,20 @@ class dng_shared
 	protected:
 		
 		virtual bool Parse_ifd0 (dng_stream &stream,
-							     dng_exif &exif,
-							 	 uint32 parentCode,
-							 	 uint32 tagCode,
-							 	 uint32 tagType,
-							 	 uint32 tagCount,
-							 	 uint64 tagOffset);
-							 		 
+								 dng_exif &exif,
+								 uint32 parentCode,
+								 uint32 tagCode,
+								 uint32 tagType,
+								 uint32 tagCount,
+								 uint64 tagOffset);
+									 
 		virtual bool Parse_ifd0_exif (dng_stream &stream,
-							          dng_exif &exif,
-						 		 	  uint32 parentCode,
-						 		 	  uint32 tagCode,
-						 		 	  uint32 tagType,
-						 		 	  uint32 tagCount,
-						 		 	  uint64 tagOffset);
+									  dng_exif &exif,
+									  uint32 parentCode,
+									  uint32 tagCode,
+									  uint32 tagType,
+									  uint32 tagCount,
+									  uint64 tagOffset);
 	
 	};
 	

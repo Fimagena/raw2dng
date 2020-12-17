@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_file_stream.h#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Simple, portable, file read/write support.
@@ -45,6 +40,14 @@ class dng_file_stream: public dng_stream
 		dng_file_stream (const char *filename,
 						 bool output = false,
 						 uint32 bufferSize = kDefaultBufferSize);
+
+		#if qWinOS
+
+		dng_file_stream (const wchar_t *filename,
+						 bool output = false,
+						 uint32 bufferSize = kDefaultBufferSize);
+
+		#endif	// qWinOS
 		
 		virtual ~dng_file_stream ();
 	
@@ -59,14 +62,6 @@ class dng_file_stream: public dng_stream
 		virtual void DoWrite (const void *data,
 							  uint32 count,
 							  uint64 offset);
-		
-	private:
-	
-		// Hidden copy constructor and assignment operator.
-	
-		dng_file_stream (const dng_file_stream &stream);
-		
-		dng_file_stream & operator= (const dng_file_stream &stream);
 		
 	};
 		

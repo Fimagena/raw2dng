@@ -46,12 +46,12 @@ void DngHost::PerformAreaTask(dng_area_task &task, const dng_rect &area) {
 static std::exception_ptr threadException = nullptr;
 
 static void executeAreaThread(std::reference_wrapper<dng_area_task> task, uint32 threadIndex, const dng_rect &threadArea, const dng_point &tileSize, dng_abort_sniffer *sniffer) {
-   try { task.get().ProcessOnThread(threadIndex, threadArea, tileSize, sniffer); }
+   try { task.get().ProcessOnThread(threadIndex, threadArea, tileSize, sniffer, NULL); }
    catch (...) { threadException = std::current_exception(); }
 }
 
 
-void DngHost::PerformAreaTask(dng_area_task &task, const dng_rect &area) {
+void DngHost::PerformAreaTask(dng_area_task &task, const dng_rect &area, dng_area_task_progress *progress) {
     dng_point tileSize(task.FindTileSize(area));
 
     // Now we need to do some resource allocation
@@ -67,7 +67,7 @@ void DngHost::PerformAreaTask(dng_area_task &task, const dng_rect &area) {
         else hTilesPerThread++;
     }
 
-    task.Start(Min_uint32(task.MaxThreads (), kMaxMPThreads), tileSize, &Allocator (), Sniffer ());
+    task.Start(Min_uint32(task.MaxThreads (), kMaxMPThreads), area, tileSize, &Allocator (), Sniffer ());
 
     std::vector<std::thread> areaThreads;
     threadException = nullptr;

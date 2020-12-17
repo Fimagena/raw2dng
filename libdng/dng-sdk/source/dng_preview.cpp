@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2007-2011 Adobe Systems Incorporated
+// Copyright 2007-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_preview.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_preview.h"
@@ -292,10 +285,10 @@ dng_jpeg_preview_tag_set::dng_jpeg_preview_tag_set (dng_tiff_directory &director
 	,	fReferenceTag (tcReferenceBlackWhite, fReferenceData, 6)
 	
 	{
-
+	
 	if (preview.fPhotometricInterpretation == piYCbCr)
 		{
-
+	
 		fCoefficientsData [0] = dng_urational (299, 1000);
 		fCoefficientsData [1] = dng_urational (587, 1000);
 		fCoefficientsData [2] = dng_urational (114, 1000);
@@ -454,7 +447,11 @@ class dng_raw_preview_tag_set: public dng_preview_tag_set
 		tag_uint32_ptr fWhiteLevelTag;
 		
 		uint32 fWhiteLevelData [kMaxColorPlanes];
+  
+        tag_urational_ptr fBlackLevelTag;
 		
+        dng_urational fBlackLevelData [kMaxColorPlanes];
+        
 	public:
 	
 		dng_raw_preview_tag_set (dng_tiff_directory &directory,
@@ -481,6 +478,10 @@ dng_raw_preview_tag_set::dng_raw_preview_tag_set (dng_tiff_directory &directory,
 	,	fWhiteLevelTag (tcWhiteLevel,
 						fWhiteLevelData,
 						preview.fImage->Planes ())
+
+    ,   fBlackLevelTag (tcBlackLevel,
+                        fBlackLevelData,
+                        preview.fImage->Planes ())
 						
 	{
 									 
@@ -505,6 +506,29 @@ dng_raw_preview_tag_set::dng_raw_preview_tag_set (dng_tiff_directory &directory,
 		directory.Add (&fWhiteLevelTag);
 		
 		}
+  
+    else
+        {
+        
+        bool nonZeroBlack = false;
+        
+        for (uint32 j = 0; j < preview.fImage->Planes (); j++)
+            {
+            
+            fBlackLevelData [j].Set_real64 (preview.fBlackLevel [j], 1);
+            
+            nonZeroBlack = nonZeroBlack || (preview.fBlackLevel [j] != 0.0);
+            
+            }
+            
+        if (nonZeroBlack)
+            {
+            
+            directory.Add (&fBlackLevelTag);
+
+            }
+        
+        }
 		
 	}
 
@@ -525,6 +549,11 @@ dng_raw_preview::dng_raw_preview ()
 	,	fIFD				()
 	
 	{
+ 
+    for (uint32 n = 0; n < kMaxSamplesPerPixel; n++)
+        {
+        fBlackLevel [n] = 0.0;
+        }
 	
 	}
 
@@ -668,6 +697,70 @@ void dng_mask_preview::WriteData (dng_host &host,
 					
 	}
 		
+/*****************************************************************************/
+
+dng_depth_preview::dng_depth_preview ()
+
+    :    fImage              ()
+    ,    fCompressionQuality (-1)
+    ,    fFullResolution     (false)
+    ,    fIFD                ()
+
+    {
+    
+    }
+
+/*****************************************************************************/
+
+dng_depth_preview::~dng_depth_preview ()
+    {
+    
+    }
+
+/*****************************************************************************/
+
+dng_basic_tag_set * dng_depth_preview::AddTagSet (dng_tiff_directory &directory) const
+    {
+    
+    fIFD.fNewSubFileType = fFullResolution ? sfDepthMap
+                                           : sfPreviewDepthMap;
+    
+    fIFD.fImageWidth  = fImage->Width  ();
+    fIFD.fImageLength = fImage->Height ();
+    
+    fIFD.fSamplesPerPixel = 1;
+    
+    fIFD.fPhotometricInterpretation = piDepth;
+    
+    fIFD.fCompression = ccDeflate;
+    fIFD.fPredictor   = cpHorizontalDifference;
+    
+    fIFD.fCompressionQuality = fCompressionQuality;
+    
+    fIFD.fBitsPerSample [0] = TagTypeSize (fImage->PixelType ()) * 8;
+    
+    fIFD.FindTileSize (512 * 512 * fIFD.fSamplesPerPixel);
+    
+    return new dng_basic_tag_set (directory, fIFD);
+    
+    }
+
+/*****************************************************************************/
+
+void dng_depth_preview::WriteData (dng_host &host,
+                                   dng_image_writer &writer,
+                                   dng_basic_tag_set &basic,
+                                   dng_stream &stream) const
+    {
+    
+    writer.WriteImage (host,
+                       fIFD,
+                       basic,
+                       stream,
+                       *fImage.Get ());
+        
+    }
+
 /*****************************************************************************/
 
 dng_preview_list::dng_preview_list ()

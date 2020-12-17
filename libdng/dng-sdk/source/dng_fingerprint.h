@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_fingerprint.h#2 $ */ 
-/* $DateTime: 2012/07/11 10:36:56 $ */
-/* $Change: 838485 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Fingerprint (cryptographic hashing) support for generating strong hashes of image
@@ -45,6 +40,8 @@ class dng_fingerprint
 	public:
 	
 		dng_fingerprint ();
+        
+        dng_fingerprint (const char *hex);
 		
 		/// Check if fingerprint is all zeros.
 
@@ -75,6 +72,10 @@ class dng_fingerprint
 			return !(*this == print);
 			}
 			
+		/// Comparision test for fingerprints.
+			
+        bool operator< (const dng_fingerprint &print) const;
+        
 		/// Produce a 32-bit hash value from fingerprint used for faster hashing of
 		/// fingerprints.
 			
@@ -115,6 +116,24 @@ struct dng_fingerprint_less_than
 		return memcmp (a.data, 
 					   b.data, 
 					   sizeof (a.data)) < 0;
+
+		}
+
+	};
+
+/******************************************************************************/
+
+/// \brief Utility to hash fingerprints (e.g., for hashtables).
+
+struct dng_fingerprint_hash
+	{
+
+	/// Hash function.
+
+	size_t operator () (const dng_fingerprint &digest) const
+		{
+
+		return (size_t) digest.Collapse32 ();
 
 		}
 
@@ -226,6 +245,7 @@ class dng_md5_printer
 			
 		// FF, GG, HH, and II transformations for rounds 1, 2, 3, and 4.
 		
+		DNG_ATTRIB_NO_SANITIZE("unsigned-integer-overflow")
 		static inline void FF (uint32 &a,
 							   uint32 b,
 							   uint32 c,
@@ -239,6 +259,7 @@ class dng_md5_printer
 			a += b;
 			}
 
+		DNG_ATTRIB_NO_SANITIZE("unsigned-integer-overflow")
 		static inline void GG (uint32 &a,
 							   uint32 b,
 							   uint32 c,
@@ -252,6 +273,7 @@ class dng_md5_printer
 			a += b;
 			}
 
+		DNG_ATTRIB_NO_SANITIZE("unsigned-integer-overflow")
 		static inline void HH (uint32 &a,
 							   uint32 b,
 							   uint32 c,
@@ -265,6 +287,7 @@ class dng_md5_printer
 			a += b;
 			}
 
+		DNG_ATTRIB_NO_SANITIZE("unsigned-integer-overflow")
 		static inline void II (uint32 &a,
 							   uint32 b,
 							   uint32 c,

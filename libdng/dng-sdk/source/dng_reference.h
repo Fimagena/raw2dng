@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2009 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_reference.h#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #ifndef __dng_reference__
@@ -19,6 +12,8 @@
 /*****************************************************************************/
 
 #include "dng_bottlenecks.h"
+#include "dng_simd_type.h"
+#include "dng_flags.h"
 
 /*****************************************************************************/
 
@@ -47,18 +42,10 @@ void RefSetArea8 (uint8 *dPtr,
 				  int32 rowStep,
 				  int32 colStep,
 				  int32 planeStep);
-				   
-void RefSetArea16 (uint16 *dPtr,
-				   uint16 value,
-				   uint32 rows,
-				   uint32 cols,
-				   uint32 planes,
-				   int32 rowStep,
-				   int32 colStep,
-				   int32 planeStep);
 
-void RefSetArea32 (uint32 *dPtr,
-				   uint32 value,
+template <SIMDType simd, typename destType>
+void RefSetArea   (destType *dPtr,
+				   destType value,
 				   uint32 rows,
 				   uint32 cols,
 				   uint32 planes,
@@ -140,6 +127,7 @@ void RefCopyArea8_32 (const uint8 *sPtr,
 					  int32 dColStep,
 					  int32 dPlaneStep);
 
+template <SIMDType simd>
 void RefCopyArea16_S16 (const uint16 *sPtr,
 					    int16 *dPtr,
 					    uint32 rows,
@@ -501,7 +489,8 @@ void RefVignette32 (real32 *sPtr,
 					int32 sRowStep,
 					int32 sPlaneStep,
 					int32 mRowStep,
-					uint32 mBits);
+					uint32 mBits,
+                    uint16 blackLevel);
 
 /*****************************************************************************/
 
@@ -513,6 +502,18 @@ void RefMapArea16 (uint16 *dPtr,
 				   int32 step1,
 				   int32 step2,
 				   const uint16 *map);
+
+/*****************************************************************************/
+
+void RefBaselineMapPoly32 (real32 *dPtr,
+						   const int32 rowStep,
+						   const uint32 rows,
+						   const uint32 cols,
+						   const uint32 rowPitch,
+						   const uint32 colPitch,
+						   const real32 *coefficients,
+						   const uint32 degree,
+                           uint16 blackLevel);
 
 /*****************************************************************************/
 

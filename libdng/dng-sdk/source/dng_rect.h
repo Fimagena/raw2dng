@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_rect.h#2 $ */ 
-/* $DateTime: 2012/06/01 07:28:57 $ */
-/* $Change: 832715 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #ifndef __dng_rect__
@@ -18,8 +11,10 @@
 
 /*****************************************************************************/
 
-#include "dng_types.h"
+#include "dng_exceptions.h"
 #include "dng_point.h"
+#include "dng_safe_arithmetic.h"
+#include "dng_types.h"
 #include "dng_utils.h"
 
 /*****************************************************************************/
@@ -44,20 +39,40 @@ class dng_rect
 			{
 			}
 			
+		// Constructs a dng_rect from the top-left and bottom-right corner.
+		// Throws an exception if the resulting height or width are too large
+		// to be represented as an int32. The intent of this is to protect
+		// code that may be computing the height or width directly from the
+		// member variables (instead of going through H() or W()).
+
 		dng_rect (int32 tt, int32 ll, int32 bb, int32 rr)
 			:	t (tt)
 			,	l (ll)
 			,	b (bb)
 			,	r (rr)
 			{
+
+			int32 dummy;
+
+			if (!SafeInt32Sub (r, l, &dummy) ||
+				!SafeInt32Sub (b, t, &dummy))
+				{
+				ThrowProgramError ("Overflow in dng_rect constructor");
+				}
+
 			}
 			
 		dng_rect (uint32 h, uint32 w)
 			:	t (0)
 			,	l (0)
-			,	b ((int32) h)
-			,	r ((int32) w)
 			{
+
+			if (!ConvertUint32ToInt32 (h, &b) ||
+				!ConvertUint32ToInt32 (w, &r))
+				{
+				ThrowProgramError ("Overflow in dng_rect constructor");
+				}
+
 			}
 			
 		dng_rect (const dng_point &size)
@@ -97,14 +112,67 @@ class dng_rect
 			return !IsEmpty ();
 			}
 			
+		// Returns the width of the rectangle, or 0 if r is smaller than l.
+		// Throws an exception if the width is too large to be represented as
+		// a _signed_ int32 (even if it would fit in a uint32). This is
+		// consciously conservative -- there are existing uses of W() where
+		// the result is converted to an int32 without an overflow check, and
+		// we want to make sure no overflow can occur in such cases. We
+		// provide this check in addition to the check performed in the
+		// "two-corners" constructor to protect client code that produes a
+		// dng_rect with excessive size by initializing or modifying the
+		// member variables directly.
+
 		uint32 W () const
 			{
-			return (r >= l ? (uint32) (r - l) : 0);
+
+			if (r >= l)
+				{
+
+				int32 width;
+
+				if (!SafeInt32Sub (r, l, &width))
+					{
+					ThrowProgramError ("Overflow computing rectangle width");
+					}
+
+				return static_cast<uint32> (width);
+
+				}
+
+			else
+				{
+				return 0;
+				}
+
 			}
 	
+		// Returns the height of the rectangle, or 0 if b is smaller than t.
+		// Throws an exception if the height is too large to be represented as
+		// a _signed_ int32 (see W() for rationale).
+
 		uint32 H () const
 			{
-			return (b >= t ? (uint32) (b - t) : 0);
+
+			if (b >= t)
+				{
+
+				int32 height;
+
+				if (!SafeInt32Sub (b, t, &height))
+					{
+					ThrowProgramError ("Overflow computing rectangle height");
+					}
+
+				return static_cast<uint32> (height);
+
+				}
+
+			else
+				{
+				return 0;
+				}
+
 			}
 		
 		dng_point TL () const
@@ -132,6 +200,16 @@ class dng_rect
 			return dng_point ((int32) H (), (int32) W ());
 			}
 
+        uint32 LongSide () const
+            {
+            return Max_uint32 (W (), H ());
+            }
+		
+        uint32 ShortSide () const
+            {
+            return Min_uint32 (W (), H ());
+            }
+		
 		real64 Diagonal () const
 			{
 			return hypot ((real64) W (),
@@ -275,10 +353,26 @@ class dng_rect_real64
 							 Round_int32 (r));
 			}
 	
+        real64 LongSide () const
+            {
+            return Max_real64 (W (), H ());
+            }
+		
+        real64 ShortSide () const
+            {
+            return Min_real64 (W (), H ());
+            }
+		
 		real64 Diagonal () const
 			{
 			return hypot (W (), H ());
 			}
+        
+        dng_point_real64 Center () const
+            {
+            return dng_point_real64 ((t + b) * 0.5,
+                                     (l + r) * 0.5);
+            }
 	
 	};
 
@@ -486,6 +580,44 @@ inline dng_rect MakeOuterPadRect (const dng_rect &rect,
 	return out;
 	
 	}
+
+/*****************************************************************************/
+
+inline dng_rect_real64 MakeOuterPadRect (const dng_rect_real64 &rect,
+										 const real64 pad)
+	{
+
+	dng_rect_real64 result = rect;
+	
+	result.t -= pad;
+	result.l -= pad;
+	result.b += pad;
+	result.r += pad;
+
+	return result;
+	
+	}
+
+/*****************************************************************************/
+
+inline dng_rect_real64 Lerp (const dng_rect_real64 &a,
+							 const dng_rect_real64 &b,
+							 const real64 t)
+	{
+	
+	return dng_rect_real64 (Lerp_real64 (a.t, b.t, t),
+							Lerp_real64 (a.l, b.l, t),
+							Lerp_real64 (a.b, b.b, t),
+							Lerp_real64 (a.r, b.r, t));
+	
+	}
+
+/*****************************************************************************/
+
+dng_rect_real64 Bounds (const dng_point_real64 &a,
+						const dng_point_real64 &b,
+						const dng_point_real64 &c,
+						const dng_point_real64 &d);
 
 /*****************************************************************************/
 

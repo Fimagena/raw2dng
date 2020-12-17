@@ -1,22 +1,14 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
 
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_file_stream.cpp#2 $ */ 
-/* $DateTime: 2012/06/01 07:28:57 $ */
-/* $Change: 832715 $ */
-/* $Author: tknoll $ */
-
-/*****************************************************************************/
-
 #include "dng_file_stream.h"
 
 #include "dng_exceptions.h"
-
 
 /*****************************************************************************/
 
@@ -31,8 +23,9 @@ dng_file_stream::dng_file_stream (const char *filename,
 	,	fFile (NULL)
 	
 	{
+
 	fFile = fopen (filename, output ? "wb" : "rb");
-	
+
 	if (!fFile)
 		{
 		
@@ -52,6 +45,60 @@ dng_file_stream::dng_file_stream (const char *filename,
 		}
 	
 	}
+
+/*****************************************************************************/
+
+#if qWinOS
+
+/*****************************************************************************/
+
+dng_file_stream::dng_file_stream (const wchar_t *filename,
+								  bool output,
+								  uint32 bufferSize)
+
+	:	dng_stream ((dng_abort_sniffer *) NULL,
+					bufferSize,
+					0)
+	
+	,	fFile (NULL)
+	
+	{
+
+	fFile = _wfopen (filename, output ? L"wb" : L"rb");
+
+	if (!fFile)
+		{
+		
+		#if qDNGValidate
+
+		char filenameCString[256];
+
+		size_t returnCount;
+
+		wcstombs_s (&returnCount, 
+					filenameCString, 
+					256, 
+					filename, 
+					_TRUNCATE);
+
+		ReportError ("Unable to open file",
+					 filenameCString);
+					 
+		ThrowSilentError ();
+		
+		#else
+		
+		ThrowOpenFile ();
+		
+		#endif	// qDNGValidate
+
+		}
+	
+	}
+
+/*****************************************************************************/
+
+#endif	// qWinOS
 		
 /*****************************************************************************/
 
@@ -109,7 +156,6 @@ void dng_file_stream::DoRead (void *data,
 		
 /*****************************************************************************/
 
-
 void dng_file_stream::DoWrite (const void *data,
 							   uint32 count,
 							   uint64 offset)
@@ -117,7 +163,7 @@ void dng_file_stream::DoWrite (const void *data,
 	
 	if (fseek (fFile, (uint32) offset, SEEK_SET) != 0)
 		{
-
+		
 		ThrowWriteFile ();
 
 		}

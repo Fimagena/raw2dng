@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_mosaic_info.h#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Support for descriptive information about color filter array patterns.
@@ -180,7 +175,10 @@ class dng_mosaic_info
 								  const dng_image &srcImage,
 								  dng_image &dstImage,
 								  const dng_point &downScale,
-								  uint32 srcPlane = 0) const;
+								  uint32 srcPlane = 0,
+                                  dng_matrix *scaleTransforms = NULL) const;
+								  
+		virtual bool SupportsPreservedBlackLevels () const;
 								  
 	protected:
 	

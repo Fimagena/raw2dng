@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2008 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_parse_utils.cpp#3 $ */ 
-/* $DateTime: 2012/06/06 12:08:58 $ */
-/* $Change: 833617 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_parse_utils.h"
@@ -111,7 +104,9 @@ const char * LookupParentCode (uint32 parentCode)
 		{	tcPanasonicRAW,				"Panasonic RAW"					},
 		{	tcFoveonX3F,				"Foveon X3F"					},
 		{	tcJPEG,						"JPEG"							},
-		{	tcAdobePSD,					"Adobe PSD"						}
+		{	tcAdobePSD,					"Adobe PSD"						},
+		{	tcPNG,                      "PNG"						    },
+		{	tcHEIC,						"HEIC"							}
 		};
 
 	const char *name = LookupName (parentCode,
@@ -244,6 +239,9 @@ const char * LookupTagCode (uint32 parentCode,
 		{	tcExifVersion,						"ExifVersion"					},
 		{	tcDateTimeOriginal,					"DateTimeOriginal"				},
 		{	tcDateTimeDigitized,				"DateTimeDigitized"				},
+        {   tcOffsetTime,                       "OffsetTime"                    },
+        {   tcOffsetTimeOriginal,               "OffsetTimeOriginal"            },
+        {   tcOffsetTimeDigitized,              "OffsetTimeDigitized"           },
 		{	tcComponentsConfiguration,			"ComponentsConfiguration"		},
 		{	tcCompressedBitsPerPixel,			"CompressedBitsPerPixel"		},
 		{	tcShutterSpeedValue,				"ShutterSpeedValue"				},
@@ -275,6 +273,12 @@ const char * LookupTagCode (uint32 parentCode,
 		{	tcSubsecTimeOriginal,				"SubsecTimeOriginal"			},
 		{	tcSubsecTimeDigitized,				"SubsecTimeDigitized"			},
 		{	tcAdobeLayerData,					"AdobeLayerData"				},
+        {   tcTemperature,                      "Temperature"                   },
+        {   tcHumidity,                         "Humidity"                      },
+        {   tcPressure,                         "Pressure"                      },
+        {   tcWaterDepth,                       "WaterDepth"                    },
+        {   tcAcceleration,                     "Acceleration"                  },
+        {   tcCameraElevationAngle,             "CameraElevationAngle"          },
 		{	tcFlashPixVersion,					"FlashPixVersion"				},
 		{	tcColorSpace,						"ColorSpace"					},
 		{	tcPixelXDimension,					"PixelXDimension"				},
@@ -407,7 +411,15 @@ const char * LookupTagCode (uint32 parentCode,
 		{	tcNewRawImageDigest,				"NewRawImageDigest"				},
 		{	tcRawToPreviewGain,					"RawToPreviewGain"				},
 		{	tcCacheBlob,						"CacheBlob"						},
-		{	tcKodakKDCPrivateIFD,				"KodakKDCPrivateIFD"			}
+        {   tcCacheVersion,                     "CacheVersion"                  },
+        {   tcDefaultUserCrop,                  "DefaultUserCrop"               },
+        {   tcDepthFormat,                      "DepthFormat"                   },
+        {   tcDepthNear,                        "DepthNear"                     },
+        {   tcDepthFar,                         "DepthFar"                      },
+        {   tcDepthUnits,                       "DepthUnits"                    },
+        {   tcDepthMeasureType,                 "DepthMeasureType"              },
+        {   tcEnhanceParams,                    "EnhanceParams"                 },
+ 		{	tcKodakKDCPrivateIFD,				"KodakKDCPrivateIFD"			}
 		};
 
 	const dng_name_table kGPSTagNames [] =
@@ -624,6 +636,9 @@ const char * LookupNewSubFileType (uint32 key)
 		{	sfPreviewImage		, "Preview Image"		},
 		{	sfTransparencyMask	, "Transparency Mask"	},
 		{	sfPreviewMask		, "Preview Mask"		},
+		{	sfDepthMap			, "Depth Map"			},
+		{	sfPreviewDepthMap	, "Preview Depth Map"	},
+        {   sfEnhancedImage     , "Enhanced Image"      },
 		{	sfAltPreviewImage	, "Alt Preview Image"	}
 		};
 
@@ -752,11 +767,12 @@ const char * LookupPhotometricInterpretation (uint32 key)
 	
 	const dng_name_table kPhotometricInterpretationNames [] =
 		{
-		{	piWhiteIsZero, 			"WhiteIsZero"		},
+		{	piWhiteIsZero,			"WhiteIsZero"		},
 		{	piBlackIsZero,			"BlackIsZero"		},
 		{	piRGB,					"RGB"				},
 		{	piRGBPalette,			"RGBPalette"		},
 		{	piTransparencyMask,		"TransparencyMask"	},
+		{	piDepth,				"Depth"				},
 		{	piCMYK,					"CMYK"				},
 		{	piYCbCr,				"YCbCr"				},
 		{	piCIELab,				"CIELab"			},
@@ -1696,6 +1712,95 @@ const char * LookupSensitivityType (uint32 key)
 	return s;
 
 	}
+
+/*****************************************************************************/
+
+const char * LookupDepthFormat (uint32 key)
+    {
+    
+    const dng_name_table kDepthFormatNames [] =
+        {
+        {    depthFormatUnknown,    "Unknown"   },
+        {    depthFormatLinear,     "Linear"    },
+        {    depthFormatInverse,    "Inverse"   },
+        };
+
+    const char *name = LookupName (key,
+                                   kDepthFormatNames,
+                                   sizeof (kDepthFormatNames    ) /
+                                   sizeof (kDepthFormatNames [0]));
+        
+    if (name)
+        {
+        return name;
+        }
+        
+    static char s [32];
+        
+    sprintf (s, "%u", (unsigned) key);
+        
+    return s;
+
+    }
+
+/*****************************************************************************/
+
+const char * LookupDepthUnits (uint32 key)
+    {
+    
+    const dng_name_table kDepthUnitNames [] =
+        {
+        {    depthUnitsUnknown,    "Unknown"   },
+        {    depthUnitsMeters,     "Meters"    },
+        };
+
+    const char *name = LookupName (key,
+                                   kDepthUnitNames,
+                                   sizeof (kDepthUnitNames    ) /
+                                   sizeof (kDepthUnitNames [0]));
+        
+    if (name)
+        {
+        return name;
+        }
+        
+    static char s [32];
+        
+    sprintf (s, "%u", (unsigned) key);
+        
+    return s;
+
+    }
+
+/*****************************************************************************/
+
+const char * LookupDepthMeasureType (uint32 key)
+    {
+    
+    const dng_name_table kDepthMeasureTypeNames [] =
+        {
+        {    depthMeasureUnknown,       "Unknown"       },
+        {    depthMeasureOpticalAxis,   "Optical Axis"  },
+        {    depthMeasureOpticalRay,    "Optical Ray"   },
+        };
+
+    const char *name = LookupName (key,
+                                   kDepthMeasureTypeNames,
+                                   sizeof (kDepthMeasureTypeNames    ) /
+                                   sizeof (kDepthMeasureTypeNames [0]));
+        
+    if (name)
+        {
+        return name;
+        }
+        
+    static char s [32];
+        
+    sprintf (s, "%u", (unsigned) key);
+        
+    return s;
+
+    }
 
 /*****************************************************************************/
 

@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_parse_utils.h#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #ifndef __dng_parse_utils__
@@ -105,6 +98,12 @@ const char * LookupPreviewColorSpace (uint32 key);
 const char * LookupJPEGMarker (uint32 key);
 
 const char * LookupSensitivityType (uint32 key);
+
+const char * LookupDepthFormat (uint32 key);
+
+const char * LookupDepthUnits (uint32 key);
+
+const char * LookupDepthMeasureType (uint32 key);
 
 /*****************************************************************************/
 

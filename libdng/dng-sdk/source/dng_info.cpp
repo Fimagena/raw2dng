@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_info.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_info.h"
@@ -37,8 +30,11 @@ dng_info::dng_info ()
 	,	fShared					 ()
 	,	fMainIndex				 (-1)
 	,	fMaskIndex				 (-1)
-	,	fIFDCount				 (0)
-	,	fChainedIFDCount		 (0)
+    ,   fDepthIndex              (-1)
+    ,   fEnhancedIndex           (-1)
+	,	fIFD				     ()
+	,	fChainedIFD   		     ()
+    ,   fChainedSubIFD           ()
 	,	fMakerNoteNextIFD		 (0)
 	
 	{
@@ -49,6 +45,44 @@ dng_info::dng_info ()
 
 dng_info::~dng_info ()
 	{
+
+    for (size_t index = 0; index < fIFD.size (); index++)
+        {
+
+        if (fIFD [index])
+            {
+            delete fIFD [index];
+            fIFD [index] = NULL;
+            }
+
+        }
+	
+    for (size_t index2 = 0; index2 < fChainedIFD.size (); index2++)
+        {
+
+        if (fChainedIFD [index2])
+            {
+            delete fChainedIFD [index2];
+            fChainedIFD [index2] = NULL;
+            }
+
+        }
+
+    for (size_t index3 = 0; index3 < fChainedSubIFD.size (); index3++)
+        {
+
+        for (size_t index4 = 0; index4 < fChainedSubIFD [index3].size (); index4++)
+            {
+
+            if (fChainedSubIFD [index3] [index4])
+                {
+                delete fChainedSubIFD [index3] [index4];
+                fChainedSubIFD [index3] [index4] = NULL;
+                }
+
+            }
+
+        }
 	
 	}
 
@@ -423,18 +457,30 @@ void dng_info::ParseIFD (dng_host &host,
 						parentCode <= tcLastMakerNoteIFD);
 	
 	#endif
+    
+    // TIFF IFDs often read from two very different places in the file,
+    // one for the IFD itself (and small tags), and elsewhere in the file
+    // for large tags.  We can reduce the number of calls to the OS
+    // by double buffering reads for the two areas of the file.
+    
+    dng_stream_double_buffered ifdStream (stream);
 
-	stream.SetReadPosition (ifdOffset);
+	ifdStream.SetReadPosition (ifdOffset);
 	
 	if (ifd)
 		{
 		ifd->fThisIFD = ifdOffset;
 		}
 	
-	uint32 ifdEntries = stream.Get_uint16 ();
+	uint32 ifdEntries = ifdStream.Get_uint16 ();
 	
 	#if qDNGValidate
-	
+        
+    // IC hits these warnings on JPG
+    bool generateOddOffsetWarnings = true;
+    if (gImagecore)
+        generateOddOffsetWarnings = false;
+        
 	if (gVerbose)
 		{
 		
@@ -445,7 +491,7 @@ void dng_info::ParseIFD (dng_host &host,
 		
 		}
 		
-	if ((ifdOffset & 1) && !isMakerNote)
+	if (generateOddOffsetWarnings && (ifdOffset & 1) && !isMakerNote) 
 		{
 		
 		char message [256];
@@ -466,10 +512,10 @@ void dng_info::ParseIFD (dng_host &host,
 	for (uint32 tag_index = 0; tag_index < ifdEntries; tag_index++)
 		{
 		
-		stream.SetReadPosition (ifdOffset + 2 + tag_index * 12);
+		ifdStream.SetReadPosition (ifdOffset + 2 + tag_index * 12);
 		
-		uint32 tagCode  = stream.Get_uint16 ();
-		uint32 tagType  = stream.Get_uint16 ();
+		uint32 tagCode  = ifdStream.Get_uint16 ();
+		uint32 tagType  = ifdStream.Get_uint16 ();
 		
 		// Minolta 7D files have a bug in the EXIF block where the count
 		// is wrong, and we run off into next IFD link.  So if abort parsing
@@ -494,7 +540,7 @@ void dng_info::ParseIFD (dng_host &host,
 			
 			}
 		
-		uint32 tagCount = stream.Get_uint32 ();
+		uint32 tagCount = ifdStream.Get_uint32 ();
 		
 		#if qDNGValidate
 
@@ -545,19 +591,22 @@ void dng_info::ParseIFD (dng_host &host,
 			continue;
 			
 			}
+            
+        bool localTag = true;
 			
 		uint64 tagOffset = ifdOffset + 2 + tag_index * 12 + 8;
 		
 		if (tagCount * tag_type_size > 4)
 			{
 			
-			tagOffset = stream.Get_uint32 ();
+			tagOffset = ifdStream.Get_uint32 ();
 			
 			#if qDNGValidate
 			
 				{
 			
-				if (!(ifdOffset & 1) && 
+				if (generateOddOffsetWarnings &&
+                    !(ifdOffset & 1) &&
 				     (tagOffset & 1) &&
 				    !isMakerNote     &&
 				    parentCode != tcKodakDCRPrivateIFD &&
@@ -581,13 +630,19 @@ void dng_info::ParseIFD (dng_host &host,
 			#endif
 				
 			tagOffset += offsetDelta;
+            
+            localTag = ifdStream.DataInBuffer (tagCount * tag_type_size,
+                                               tagOffset);
 				
-			stream.SetReadPosition (tagOffset);
+            if (localTag)
+                ifdStream.SetReadPosition (tagOffset);
+            else
+                stream.SetReadPosition (tagOffset);
 			
 			}
 			
 		ParseTag (host,
-				  stream,
+				  localTag ? ifdStream : stream,
 			      exif,
 				  shared,
 				  ifd,
@@ -600,9 +655,9 @@ void dng_info::ParseIFD (dng_host &host,
 			
 		}
 		
-	stream.SetReadPosition (ifdOffset + 2 + ifdEntries * 12);
+	ifdStream.SetReadPosition (ifdOffset + 2 + ifdEntries * 12);
 	
-	uint32 nextIFD = stream.Get_uint32 ();
+	uint32 nextIFD = ifdStream.Get_uint32 ();
 	
 	#if qDNGValidate
 		
@@ -645,6 +700,8 @@ void dng_info::ParseIFD (dng_host &host,
 		{
 		printf ("\n");
 		}
+        
+    stream.SetReadPosition (ifdStream.Position ());
 
 	#endif
 		
@@ -679,10 +736,12 @@ bool dng_info::ParseMakerNoteIFD (dng_host &host,
 		}
 		
 	// Get entry count.
+    
+    dng_stream_double_buffered ifdStream (stream);
 	
-	stream.SetReadPosition (ifdOffset);
+	ifdStream.SetReadPosition (ifdOffset);
 	
-	uint32 ifdEntries = stream.Get_uint16 ();
+	uint32 ifdEntries = ifdStream.Get_uint16 ();
 
 	// Make the entry count if reasonable for the MakerNote size.
 	
@@ -696,9 +755,9 @@ bool dng_info::ParseMakerNoteIFD (dng_host &host,
 	for (tagIndex = 0; tagIndex < ifdEntries; tagIndex++)
 		{
 		
-		stream.SetReadPosition (ifdOffset + 2 + tagIndex * 12 + 2);
+		ifdStream.SetReadPosition (ifdOffset + 2 + tagIndex * 12 + 2);
 		
-		tagType = stream.Get_uint16 ();
+		tagType = ifdStream.Get_uint16 ();
 		
 		// Kludge: Some Canon MakerNotes contain tagType = 0 tags, so we
 		// need to ignore them.  This was a "firmware 1.0.4" Canon 40D raw file.
@@ -734,11 +793,11 @@ bool dng_info::ParseMakerNoteIFD (dng_host &host,
 	for (tagIndex = 0; tagIndex < ifdEntries; tagIndex++)
 		{
 		
-		stream.SetReadPosition (ifdOffset + 2 + tagIndex * 12);
+		ifdStream.SetReadPosition (ifdOffset + 2 + tagIndex * 12);
 		
-		tagCode  = stream.Get_uint16 ();
-		tagType  = stream.Get_uint16 ();
-		tagCount = stream.Get_uint32 ();
+		tagCode  = ifdStream.Get_uint16 ();
+		tagType  = ifdStream.Get_uint16 ();
+		tagCount = ifdStream.Get_uint32 ();
 		
 		if (tagType == 0)
 			{
@@ -748,11 +807,13 @@ bool dng_info::ParseMakerNoteIFD (dng_host &host,
 		uint32 tagSize = tagCount * TagTypeSize (tagType);
 		
 		uint64 tagOffset = ifdOffset + 2 + tagIndex * 12 + 8;
+        
+        bool localTag = true;
 		
 		if (tagSize > 4)
 			{
 			
-			tagOffset = stream.Get_uint32 () + offsetDelta;
+			tagOffset = ifdStream.Get_uint32 () + offsetDelta;
 			
 			if (tagOffset           < minOffset ||
 				tagOffset + tagSize > maxOffset)
@@ -764,6 +825,10 @@ bool dng_info::ParseMakerNoteIFD (dng_host &host,
 				continue;
 				
 				}
+                
+            localTag = ifdStream.DataInBuffer (tagSize, tagOffset);
+            
+            ifdStream.SetReadPosition (tagOffset);
 			
 			stream.SetReadPosition (tagOffset);
 			
@@ -844,7 +909,7 @@ bool dng_info::ParseMakerNoteIFD (dng_host &host,
 			}
 		
 		ParseTag (host,
-				  stream,
+				  localTag ? ifdStream : stream,
 				  fExif.Get (),
 				  fShared.Get (),
 				  NULL,
@@ -862,9 +927,9 @@ bool dng_info::ParseMakerNoteIFD (dng_host &host,
 	if (ifdSize >= 2 + ifdEntries * 12 + 4)
 		{
 		
-		stream.SetReadPosition (ifdOffset + 2 + ifdEntries * 12);
+		ifdStream.SetReadPosition (ifdOffset + 2 + ifdEntries * 12);
 		
-		fMakerNoteNextIFD = stream.Get_uint32 ();
+		fMakerNoteNextIFD = ifdStream.Get_uint32 ();
 		
 		}
 		
@@ -959,7 +1024,9 @@ void dng_info::ParseMakerNote (dng_host &host,
 	if ((memcmp (firstBytes, "LEICA\000\000\000", 8) == 0) ||
 		(memcmp (firstBytes, "LEICA0\003\000",	  8) == 0) ||
 		(memcmp (firstBytes, "LEICA\000\001\000", 8) == 0) ||
-		(memcmp (firstBytes, "LEICA\000\005\000", 8) == 0))
+		(memcmp (firstBytes, "LEICA\000\004\000", 8) == 0) ||
+		(memcmp (firstBytes, "LEICA\000\005\000", 8) == 0) ||
+		(memcmp (firstBytes, "LEICA\000\006\000", 8) == 0))
 		{
 
 		if (makerNoteCount > 8)
@@ -983,7 +1050,8 @@ void dng_info::ParseMakerNote (dng_host &host,
 	// Leica MakerNote for models that store absolute entry offsets (i.e., relative
 	// to the start of the file, e.g., S2).
 
-	if (memcmp (firstBytes, "LEICA\000\002\377", 8) == 0)
+	if ((memcmp (firstBytes, "LEICA\000\002\377", 8) == 0) ||
+		(memcmp (firstBytes, "LEICA\000\002\000", 8) == 0))
 		{
 		
 		if (makerNoteCount > 8)
@@ -1148,7 +1216,7 @@ void dng_info::ParseMakerNote (dng_host &host,
 		
 		}
 		
-	// Pentax MakerNote.
+	// Pentax MakerNote, absolute addresses.
 	
 	if (memcmp (firstBytes, "AOC", 4) == 0)
 		{
@@ -1179,6 +1247,47 @@ void dng_info::ParseMakerNote (dng_host &host,
 							   makerNoteCount - 6,
 							   makerNoteOffset + 6,
 							   offsetDelta,
+							   minOffset,
+							   maxOffset,
+							   tcPentaxMakerNote);
+			
+			}
+			
+		return;
+		
+		}
+
+	// Pentax MakerNote, relative addresses.
+					
+	if (memcmp (firstBytes, "PENTAX", 6) == 0)
+		{
+		
+		if (makerNoteCount > 8)
+			{
+					
+			stream.SetReadPosition (makerNoteOffset + 8);
+			
+			bool bigEndian = stream.BigEndian ();
+			
+			uint16 endianMark = stream.Get_uint16 ();
+			
+			if (endianMark == byteOrderMM)
+				{
+				bigEndian = true;
+				}
+				
+			else if (endianMark == byteOrderII)
+				{
+				bigEndian = false;
+				}
+				
+			TempBigEndian temp_endian (stream, bigEndian);
+		
+			ParseMakerNoteIFD (host,
+							   stream,
+							   makerNoteCount - 10,
+							   makerNoteOffset + 10,
+							   makerNoteOffset,		// Relative to start of MakerNote.
 							   minOffset,
 							   maxOffset,
 							   tcPentaxMakerNote);
@@ -1963,20 +2072,18 @@ void dng_info::Parse (dng_host &host,
 	
 	fShared.Reset (host.Make_dng_shared ());
 	
-	fIFD [0].Reset (host.Make_dng_ifd ());
+	fIFD.push_back (host.Make_dng_ifd ());
 	
 	ParseIFD (host,
 			  stream,
 			  fExif.Get (),
 			  fShared.Get (),
-			  fIFD [0].Get (),
+			  fIFD [0],
 			  fTIFFBlockOffset + next_offset,
 			  fTIFFBlockOffset,
 			  0);
 			  	
 	next_offset = fIFD [0]->fNextIFD;
-	
-	fIFDCount = 1;
 	
 	// Parse chained IFDs.
 	
@@ -2022,7 +2129,7 @@ void dng_info::Parse (dng_host &host,
 			
 			}
 
-		if (fChainedIFDCount == kMaxChainedIFDs)
+		if (ChainedIFDCount () == kMaxChainedIFDs)
 			{
 			
 			#if qDNGValidate
@@ -2039,20 +2146,20 @@ void dng_info::Parse (dng_host &host,
 			
 			}
 			
-		fChainedIFD [fChainedIFDCount].Reset (host.Make_dng_ifd ());
+		fChainedIFD.push_back (host.Make_dng_ifd ());
 		
+        fChainedSubIFD.push_back (std::vector <dng_ifd *> ());
+			
 		ParseIFD (host,
 				  stream,
 				  NULL,
 				  NULL,
-				  fChainedIFD [fChainedIFDCount].Get (),
+				  fChainedIFD [ChainedIFDCount () - 1],
 				  fTIFFBlockOffset + next_offset,
 				  fTIFFBlockOffset,
-				  tcFirstChainedIFD + fChainedIFDCount);
+				  tcFirstChainedIFD + ChainedIFDCount () - 1);
 											   
-		next_offset = fChainedIFD [fChainedIFDCount]->fNextIFD;
-		
-		fChainedIFDCount++;
+		next_offset = fChainedIFD [ChainedIFDCount () - 1]->fNextIFD;
 		
 		}
 		
@@ -2062,10 +2169,10 @@ void dng_info::Parse (dng_host &host,
 	
 	bool tooManySubIFDs = false;
 	
-	while (searchedIFDs < fIFDCount && !tooManySubIFDs)
+	while (searchedIFDs < IFDCount () && !tooManySubIFDs)
 		{
 		
-		uint32 searchLimit = fIFDCount;
+		uint32 searchLimit = IFDCount ();
 		
 		for (uint32 searchIndex = searchedIFDs;
 			 searchIndex < searchLimit && !tooManySubIFDs;
@@ -2077,7 +2184,7 @@ void dng_info::Parse (dng_host &host,
 			     subIndex++)
 				{
 				
-				if (fIFDCount == kMaxSubIFDs + 1)
+				if (IFDCount () == kMaxSubIFDs + 1)
 					{
 					
 					tooManySubIFDs = true;
@@ -2091,19 +2198,17 @@ void dng_info::Parse (dng_host &host,
 				
 				uint32 sub_ifd_offset = stream.Get_uint32 ();
 				
-				fIFD [fIFDCount].Reset (host.Make_dng_ifd ());
+				fIFD.push_back (host.Make_dng_ifd ());
 				
 				ParseIFD (host,
 						  stream,
 						  fExif.Get (),
 						  fShared.Get (),
-						  fIFD [fIFDCount].Get (),
+						  fIFD [IFDCount () - 1],
 						  fTIFFBlockOffset + sub_ifd_offset,
 						  fTIFFBlockOffset,
-						  tcFirstSubIFD + fIFDCount - 1);
+						  tcFirstSubIFD + IFDCount () - 2);
 				
-				fIFDCount++;
-					
 				}
 									
 			searchedIFDs = searchLimit;
@@ -2126,6 +2231,52 @@ void dng_info::Parse (dng_host &host,
 		}
 		
 	#endif
+
+    // Parse SubIFDs in Chained IFDs.  Don't currently need to make this a
+    // recursive search.
+
+    for (uint32 chainedIndex = 0;
+         chainedIndex < ChainedIFDCount ();
+         chainedIndex++)
+        {
+
+        for (uint32 subIndex = 0;
+             subIndex < fChainedIFD [chainedIndex]->fSubIFDsCount;
+             subIndex++)
+            {
+            
+            if (subIndex == kMaxSubIFDs)
+                {
+                
+                #if qDNGValidate
+
+                ReportWarning ("Chained SubIFD count exceeds DNG SDK parsing limit");
+
+                #endif
+
+                break;
+                
+                }
+            
+            stream.SetReadPosition (fChainedIFD [chainedIndex]->fSubIFDsOffset +
+                                    subIndex * 4);
+            
+            uint32 sub_ifd_offset = stream.Get_uint32 ();
+            
+            fChainedSubIFD [chainedIndex].push_back (host.Make_dng_ifd ());
+            
+            ParseIFD (host,
+                      stream,
+                      fExif.Get (),
+                      fShared.Get (),
+                      fChainedSubIFD [chainedIndex] [subIndex],
+                      fTIFFBlockOffset + sub_ifd_offset,
+                      fTIFFBlockOffset,
+                      tcFirstSubIFD + subIndex);
+            
+            }
+
+        }
 		
 	// Parse EXIF IFD.
 		
@@ -2291,17 +2442,34 @@ void dng_info::PostParse (dng_host &host)
 	
 	fShared->PostParse (host, *fExif.Get ());
 	
-	for (index = 0; index < fIFDCount; index++)
+	for (index = 0; index < IFDCount (); index++)
 		{
 		
 		fIFD [index]->PostParse ();
 		
 		}
 		
-	for (index = 0; index < fChainedIFDCount; index++)
+	for (index = 0; index < ChainedIFDCount (); index++)
 		{
 		
 		fChainedIFD [index]->PostParse ();
+		
+		}
+		
+	for (size_t i = 0; i < fChainedSubIFD.size (); i++)
+		{
+
+		std::vector <dng_ifd *> &chain = fChainedSubIFD [i];
+
+		for (size_t j = 0; j < chain.size (); j++)
+			{
+
+			if (chain [j])
+				{
+				chain [j]->PostParse ();
+				}
+
+			}
 		
 		}
 		
@@ -2312,7 +2480,7 @@ void dng_info::PostParse (dng_host &host)
 		
 		fMainIndex = -1;
 		
-		for (index = 0; index < fIFDCount; index++)
+		for (index = 0; index < IFDCount (); index++)
 			{
 			
 			if (fIFD [index]->fUsesNewSubFileType &&
@@ -2384,7 +2552,7 @@ void dng_info::PostParse (dng_host &host)
 			
 		// Find mask index.
 		
-		for (index = 0; index < fIFDCount; index++)
+		for (index = 0; index < IFDCount (); index++)
 			{
 			
 			if (fIFD [index]->fNewSubFileType == sfTransparencyMask)
@@ -2411,12 +2579,72 @@ void dng_info::PostParse (dng_host &host)
 				}
 				
 			}
-			
+   
+        // Find depth index.
+        
+        for (index = 0; index < IFDCount (); index++)
+            {
+            
+            if (fIFD [index]->fNewSubFileType == sfDepthMap)
+                {
+                
+                if (fDepthIndex == -1)
+                    {
+                    
+                    fDepthIndex = index;
+                    
+                    }
+                    
+                #if qDNGValidate
+                    
+                else
+                    {
+
+                    ReportError ("Multiple IFDs marked as depth map image");
+                    
+                    }
+                    
+                #endif
+                    
+                }
+                
+            }
+            
+        // Find enhanced ifd index.
+        
+        for (index = 0; index < IFDCount (); index++)
+            {
+            
+            if (fIFD [index]->fNewSubFileType == sfEnhancedImage)
+                {
+                
+                if (fEnhancedIndex == -1)
+                    {
+                    
+                    fEnhancedIndex = index;
+                    
+                    }
+                    
+                #if qDNGValidate
+                    
+                else
+                    {
+
+                    ReportError ("Multiple IFDs marked as enhanced image");
+                    
+                    }
+                    
+                #endif
+                    
+                }
+                
+            }
+            
 		// Warn about Chained IFDs.
 			
 		#if qDNGValidate
 					
-		if (fChainedIFDCount > 0)
+		if (ChainedIFDCount () > 0)
 			{
 			
 			ReportWarning ("This file has Chained IFDs, which will be ignored by DNG readers");
@@ -2475,7 +2703,7 @@ bool dng_info::IsValidDNG ()
 		
 	// Make sure is each IFD is valid.
 	
-	for (uint32 index = 0; index < fIFDCount; index++)
+	for (uint32 index = 0; index < IFDCount (); index++)
 		{
 		
 		uint32 parentCode = (index == 0 ? 0 : tcFirstSubIFD + index - 1);
@@ -2493,7 +2721,25 @@ bool dng_info::IsValidDNG ()
 				return false;
 				
 				}
+    
+            // Also errors to depth map...
+            
+            if (index == (uint32) fDepthIndex)
+                {
+                
+                return false;
+                
+                }
+            
+			// Also errors to enhanced image...
 			
+			if (index == (uint32) fEnhancedIndex)
+				{
+				
+				return false;
+				
+				}
+				
 			}
 		
 		}

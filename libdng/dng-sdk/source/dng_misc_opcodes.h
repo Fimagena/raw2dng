@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2008-2009 Adobe Systems Incorporated
+// Copyright 2008-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_misc_opcodes.h#2 $ */ 
-/* $DateTime: 2012/08/02 06:09:06 $ */
-/* $Change: 841096 $ */
-/* $Author: erichan $ */
 
 /** \file
  * Miscellaneous DNG opcodes.
@@ -21,6 +16,8 @@
 #define __dng_misc_opcodes__
 
 /*****************************************************************************/
+
+#include "dng_classes.h"
 
 #include "dng_opcodes.h"
 
@@ -106,28 +103,28 @@ class dng_area_spec
 
 		/// The first plane.
 		
-		const uint32 Plane () const
+		uint32 Plane () const
 			{
 			return fPlane;
 			}
 
 		/// The total number of planes.
 		
-		const uint32 Planes () const
+		uint32 Planes () const
 			{
 			return fPlanes;
 			}
 
 		/// The row pitch (i.e., stride). A pitch of 1 means all rows.
 		
-		const uint32 RowPitch () const
+		uint32 RowPitch () const
 			{
 			return fRowPitch;
 			}
 		
 		/// The column pitch (i.e., stride). A pitch of 1 means all columns.
 		
-		const uint32 ColPitch () const
+		uint32 ColPitch () const
 			{
 			return fColPitch;
 			}
@@ -162,6 +159,8 @@ class dng_opcode_MapTable: public dng_inplace_opcode
 		AutoPtr<dng_memory_block> fTable;
 		
 		uint32 fCount;
+  
+        AutoPtr<dng_memory_block> fBlackAdjustedTable;
 		
 	public:
 
@@ -182,6 +181,14 @@ class dng_opcode_MapTable: public dng_inplace_opcode
 			
 		virtual dng_rect ModifiedBounds (const dng_rect &imageBounds);
 	
+        virtual void Prepare (dng_negative &negative,
+                              uint32 threadCount,
+                              const dng_point &tileSize,
+                              const dng_rect &imageBounds,
+                              uint32 imagePlanes,
+                              uint32 bufferPixelType,
+                              dng_memory_allocator &allocator);
+
 		virtual void ProcessArea (dng_negative &negative,
 								  uint32 threadIndex,
 								  dng_pixel_buffer &buffer,
@@ -209,7 +216,7 @@ class dng_opcode_MapPolynomial: public dng_inplace_opcode
 			kMaxDegree = 8
 			};
 	
-	private:
+	protected:
 	
 		dng_area_spec fAreaSpec;
 		
@@ -247,7 +254,28 @@ class dng_opcode_MapPolynomial: public dng_inplace_opcode
 								  dng_pixel_buffer &buffer,
 								  const dng_rect &dstArea,
 								  const dng_rect &imageBounds);
+
+		uint32 Degree () const
+			{
+			return fDegree;
+			}
+
+		const real64 * Coefficients () const
+			{
+			return fCoefficient;
+			}
 								  
+	protected:
+
+		virtual void DoProcess (dng_pixel_buffer &buffer,
+								const dng_rect &area,
+								const uint32 plane,
+								const uint32 rowPitch,
+								const uint32 colPitch,
+								const real32 *coefficients,
+								const uint32 degree,
+                                uint16 blackLevel) const;
+
 	};
 
 /*****************************************************************************/

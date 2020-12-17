@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_bottlenecks.h#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Indirection mechanism for performance-critical routines that might be replaced
@@ -550,7 +545,8 @@ typedef void (Vignette32Proc)
 			  int32 sRowStep,
 			  int32 sPlaneStep,
 			  int32 mRowStep,
-			  uint32 mBits);
+			  uint32 mBits,
+              uint16 blackLevel);
 
 /*****************************************************************************/
 
@@ -563,6 +559,19 @@ typedef void (MapArea16Proc)
 			  int32 step1,
 			  int32 step2,
 			  const uint16 *map);
+
+/*****************************************************************************/
+
+typedef void (BaselineMapPoly32Proc)
+			 (real32 *dPtr,
+			  const int32 rowStep,
+			  const uint32 rows,
+			  const uint32 cols,
+			  const uint32 rowPitch,
+			  const uint32 colPitch,
+			  const real32 *coefficients,
+			  const uint32 degree,
+              uint16 blackLevel);
 
 /*****************************************************************************/
 
@@ -614,6 +623,7 @@ struct dng_suite
 	Vignette16Proc			*Vignette16;
 	Vignette32Proc			*Vignette32;
 	MapArea16Proc			*MapArea16;
+	BaselineMapPoly32Proc   *BaselineMapPoly32;
 	};
 
 /*****************************************************************************/
@@ -1670,7 +1680,8 @@ inline void DoVignette32 (real32 *sPtr,
 						  int32 sRowStep,
 						  int32 sPlaneStep,
 						  int32 mRowStep,
-						  uint32 mBits)
+						  uint32 mBits,
+                          uint16 blackLevel)
 	{
 	
 	(gDNGSuite.Vignette32) (sPtr,
@@ -1681,7 +1692,8 @@ inline void DoVignette32 (real32 *sPtr,
 							sRowStep,
 							sPlaneStep,
 							mRowStep,
-							mBits);
+							mBits,
+                            blackLevel);
 
 	}
 
@@ -1706,6 +1718,31 @@ inline void DoMapArea16 (uint16 *dPtr,
 						   step2,
 						   map);
 
+	}
+
+/*****************************************************************************/
+
+inline void DoBaselineMapPoly32 (real32 *dPtr,
+								 const int32 rowStep,
+								 const uint32 rows,
+								 const uint32 cols,
+								 const uint32 rowPitch,
+								 const uint32 colPitch,
+								 const real32 *coefficients,
+								 const uint32 degree,
+                                 uint16 blackLevel)
+	{
+	
+	(gDNGSuite.BaselineMapPoly32) (dPtr,
+								   rowStep,
+								   rows,
+								   cols,
+								   rowPitch,
+								   colPitch,
+								   coefficients,
+								   degree,
+                                   blackLevel);
+	
 	}
 
 /*****************************************************************************/

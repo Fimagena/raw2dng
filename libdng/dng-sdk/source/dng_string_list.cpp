@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_string_list.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_string_list.h"
@@ -64,7 +57,7 @@ void dng_string_list::Allocate (uint32 minSize)
 		if (fCount)
 			{
 			
-			DoCopyBytes (fList, list, fCount * (uint32) sizeof (dng_string *));
+			memcpy (list, fList, fCount * (uint32) sizeof (dng_string *));
 			
 			}
 			

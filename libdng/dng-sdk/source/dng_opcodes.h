@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2008 Adobe Systems Incorporated
+// Copyright 2008-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_opcodes.h#2 $ */ 
-/* $DateTime: 2012/08/02 06:09:06 $ */
-/* $Change: 841096 $ */
-/* $Author: erichan $ */
 
 /** \file
  * Base class and common data structures for opcodes (introduced in DNG 1.3).
@@ -133,6 +128,18 @@ class dng_opcode
 		dng_opcode (uint32 opcodeID,
 					dng_stream &stream,
 					const char *name);
+
+		// This helper routine will be called by AboutToApply if AboutToApply
+		// passes its internal checking and plans to return true. This is an
+		// opportunity for subclasses to perform some internal preparation
+		// based on the negative, image bounds, and number of image planes.
+
+		virtual void DoAboutToApply (dng_host & /* host */,
+									 dng_negative & /* negative */,
+									 const dng_rect & /* imageBounds */,
+									 uint32 /* imagePlanes */)
+			{
+			}
 					
 	public:
 		
@@ -223,7 +230,9 @@ class dng_opcode
 		/// the negative, false otherwise.
 		
 		bool AboutToApply (dng_host &host,
-						   dng_negative &negative);
+						   dng_negative &negative,
+						   const dng_rect &imageBounds,
+						   uint32 imagePlanes);
 
 		/// Apply this opcode to the specified image with associated negative.
 
@@ -308,8 +317,9 @@ class dng_filter_opcode: public dng_opcode
 		/// \retval The source pixel area needed to process the specified dstArea.
 
 		virtual dng_rect SrcArea (const dng_rect &dstArea,
-								  const dng_rect & /* imageBounds */)
+								  const dng_rect &imageBounds)
 			{
+			(void) imageBounds;
 			return dstArea;
 			}
 
@@ -336,9 +346,6 @@ class dng_filter_opcode: public dng_opcode
 		///
 		/// \param negative The negative object to be processed.
 		///
-		/// \param threadCount The number of threads to be used to perform the
-		/// processing.
-		///
 		/// \param threadCount Total number of threads that will be used for
 		/// processing. Less than or equal to MaxThreads.
 		///
@@ -355,14 +362,21 @@ class dng_filter_opcode: public dng_opcode
 		/// \param allocator dng_memory_allocator to use for allocating temporary
 		/// buffers, etc.
 
-		virtual void Prepare (dng_negative & /* negative */,
-							  uint32 /* threadCount */,
-							  const dng_point & /* tileSize */,
-							  const dng_rect & /* imageBounds */,
-							  uint32 /* imagePlanes */,
-							  uint32 /* bufferPixelType */,
-							  dng_memory_allocator & /* allocator */)
+		virtual void Prepare (dng_negative &negative,
+							  uint32 threadCount,
+							  const dng_point &tileSize,
+							  const dng_rect &imageBounds,
+							  uint32 imagePlanes,
+							  uint32 bufferPixelType,
+							  dng_memory_allocator &allocator)
 			{
+			(void) negative;
+			(void) threadCount;
+			(void) tileSize;
+			(void) imageBounds;
+			(void) imagePlanes;
+			(void) bufferPixelType;
+			(void) allocator;
 			}
 
 		/// Implements filtering operation from one buffer to another. Source
@@ -438,9 +452,6 @@ class dng_inplace_opcode: public dng_opcode
 		///
 		/// \param negative The negative object to be processed.
 		///
-		/// \param threadCount The number of threads to be used to perform the
-		/// processing.
-		///
 		/// \param threadCount Total number of threads that will be used for
 		/// processing. Less than or equal to MaxThreads.
 		///
@@ -457,14 +468,21 @@ class dng_inplace_opcode: public dng_opcode
 		/// \param allocator dng_memory_allocator to use for allocating temporary
 		/// buffers, etc.
 
-		virtual void Prepare (dng_negative & /* negative */,
-							  uint32 /* threadCount */,
-							  const dng_point & /* tileSize */,
-							  const dng_rect & /* imageBounds */,
-							  uint32 /* imagePlanes */,
-							  uint32 /* bufferPixelType */,
-							  dng_memory_allocator & /* allocator */)
+		virtual void Prepare (dng_negative &negative,
+							  uint32 threadCount,
+							  const dng_point &tileSize,
+							  const dng_rect &imageBounds,
+							  uint32 imagePlanes,
+							  uint32 bufferPixelType,
+							  dng_memory_allocator &allocator)
 			{
+			(void) negative;
+			(void) threadCount;
+			(void) tileSize;
+			(void) imageBounds;
+			(void) imagePlanes;
+			(void) bufferPixelType;
+			(void) allocator;
 			}
 
 		/// Implements image processing operation in a single buffer. The source
@@ -479,9 +497,7 @@ class dng_inplace_opcode: public dng_opcode
 		/// between 0 and threadCount - 1 for the threadCount passed to Prepare
 		/// method.
 		///
-		/// \param srcBuffer Input area and source pixels.
-		///
-		/// \param dstBuffer Destination pixels.
+		/// \param buffer Source and Destination pixels.
 		///
 		/// \param dstArea Destination pixel processing area.
 		///

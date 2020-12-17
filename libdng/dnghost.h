@@ -27,5 +27,5 @@ public:
     ~DngHost(void) {}
 
 public:
-    virtual void PerformAreaTask(dng_area_task &task, const dng_rect &area);
+    virtual void PerformAreaTask(dng_area_task &task, const dng_rect &area, dng_area_task_progress *progress = NULL);
 };

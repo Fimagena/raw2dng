@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_color_space.h#2 $ */ 
-/* $DateTime: 2012/07/11 10:36:56 $ */
-/* $Change: 838485 $ */
-/* $Author: tknoll $ */
 
 /** \file
  *  Standard gamma functions and color spaces used within the DNG SDK.
@@ -202,7 +197,7 @@ class dng_space_AdobeRGB: public dng_color_space
 		
 	public:
 	
-		/// Returns dng_function_GammaEncode_1_8
+		/// Returns dng_function_GammaEncode_2_2
 
 		virtual const dng_1d_function & GammaFunction () const;
 

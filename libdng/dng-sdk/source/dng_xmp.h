@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2011 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_xmp.h#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #ifndef __dng_xmp__
@@ -52,6 +45,11 @@ class dng_xmp
 		virtual ~dng_xmp ();
 		
 		virtual dng_xmp * Clone () const;
+
+        dng_memory_allocator & Allocator () const
+            {
+            return fAllocator;
+            }
 	
 		void Parse (dng_host &host,
 					const void *buffer,
@@ -83,7 +81,12 @@ class dng_xmp
 		void MergeFromJPEG (const dng_xmp &xmp);
 									  
 		bool HasMeta () const;
-		
+
+        void RequireMeta ()
+            {
+            fSDK->RequireMeta ();
+            }
+
 		void * GetPrivateMeta ();
 									  
 		bool Exists (const char *ns,
@@ -154,9 +157,18 @@ class dng_xmp
 								const char *path,
 								const dng_string &s);
 
+        void SetLocalString (const char *ns,
+                             const char *path,
+                             const dng_local_string &s);
+								
 		bool GetAltLangDefault (const char *ns,
 								const char *path,
-								dng_string &s) const;
+								dng_string &s,
+                                bool silent = false) const;
+								
+		bool GetLocalString (const char *ns,
+							 const char *path,
+							 dng_local_string &s) const;
 								
 		bool GetBoolean (const char *ns,
 						 const char *path,
@@ -306,13 +318,13 @@ class dng_xmp
 							 
 		#if qDNGXMPDocOps
 		
-		void DocOpsOpenXMP (const char *srcMIMI);
+		void DocOpsOpenXMP (const char *srcMIME);
 		
-		void DocOpsPrepareForSave (const char *srcMIMI,
-								   const char *dstMIMI,
+		void DocOpsPrepareForSave (const char *srcMIME,
+								   const char *dstMIME,
 								   bool newPath = true);
 								   
-		void DocOpsUpdateMetadata (const char *srcMIMI);
+		void DocOpsUpdateMetadata (const char *srcMIME);
 		
 		#endif
 
@@ -383,12 +395,20 @@ class dng_xmp
 		void SyncFlash (uint32 &flashState,
 						uint32 &flashMask,
 						uint32 options);
+      
+        void SyncExifDate (const char *ns,
+                           const char *path,
+                           dng_date_time_info &exifDateTime,
+                           bool canRemoveFromXMP,
+                           bool removeFromXMP,
+                           const dng_time_zone &fakeTimeZone);
 						
-		bool DateTimeIsDateOnly (const char *ns,
-							     const char *path);
-
 		virtual void SyncApproximateFocusDistance (dng_exif &exif,
 												   const uint32 readOnly);
+		
+		virtual void SyncLensName (dng_exif &exif);
+		
+		virtual void GenerateDefaultLensName (dng_exif &exif);
 
 	private:
 	

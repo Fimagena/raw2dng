@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2007 Adobe Systems Incorporated
+// Copyright 2007-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_tone_curve.h#2 $ */ 
-/* $DateTime: 2012/07/31 22:04:34 $ */
-/* $Change: 840853 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Representation of 1-dimensional tone curve.
@@ -23,9 +18,8 @@
 /*****************************************************************************/
 
 #include "dng_classes.h"
+#include "dng_memory.h"
 #include "dng_point.h"
-
-#include <vector>
 
 /*****************************************************************************/
 
@@ -34,7 +28,7 @@ class dng_tone_curve
 	
 	public:
 		
-		std::vector<dng_point_real64> fCoord;
+		dng_std_vector<dng_point_real64> fCoord;
 		
 	public:
 

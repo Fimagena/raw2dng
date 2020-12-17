@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2006-2012 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_negative.cpp#3 $ */ 
-/* $DateTime: 2012/06/14 20:24:41 $ */
-/* $Change: 835078 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_negative.h"
@@ -31,15 +24,18 @@
 #include "dng_info.h"
 #include "dng_jpeg_image.h"
 #include "dng_linearization_info.h"
+#include "dng_memory.h"
 #include "dng_memory_stream.h"
 #include "dng_misc_opcodes.h"
 #include "dng_mosaic_info.h"
 #include "dng_preview.h"
 #include "dng_resample.h"
+#include "dng_safe_arithmetic.h"
 #include "dng_simple_image.h"
 #include "dng_tag_codes.h"
 #include "dng_tag_values.h"
 #include "dng_tile_iterator.h"
+#include "dng_uncopyable.h"
 #include "dng_utils.h"
 #include "dng_xmp.h"
 
@@ -127,6 +123,44 @@ uint32 dng_noise_profile::NumFunctions () const
 
 /*****************************************************************************/
 
+bool dng_noise_profile::operator== (const dng_noise_profile &profile) const
+    {
+    
+    if (IsValid ())
+        {
+        
+        if (!profile.IsValid ())
+            {
+            return false;
+            }
+        
+        if (NumFunctions () != profile.NumFunctions ())
+            {
+            return false;
+            }
+            
+        for (uint32 plane = 0; plane < NumFunctions (); plane++)
+            {
+            
+            if (NoiseFunction (plane).Scale  () != profile.NoiseFunction (plane).Scale  () ||
+                NoiseFunction (plane).Offset () != profile.NoiseFunction (plane).Offset ())
+                {
+                return false;
+                }
+            
+            }
+
+        return true;
+        
+        }
+        
+    else
+        return !profile.IsValid ();
+        
+    }
+
+/*****************************************************************************/
+
 dng_metadata::dng_metadata (dng_host &host)
 
 	:	fHasBaseOrientation 		(false)
@@ -141,7 +175,7 @@ dng_metadata::dng_metadata (dng_host &host)
 	,	fEmbeddedXMPDigest       	()
 	,	fXMPinSidecar	    		(false)
 	,	fXMPisNewer		    		(false)
-	,	fSourceMIMI					()
+	,	fSourceMIME					()
 
 	{
 	}
@@ -189,7 +223,7 @@ dng_metadata::dng_metadata (const dng_metadata &rhs,
 	,	fEmbeddedXMPDigest       	(rhs.fEmbeddedXMPDigest)
 	,	fXMPinSidecar	    		(rhs.fXMPinSidecar)
 	,	fXMPisNewer		    		(rhs.fXMPisNewer)
-	,	fSourceMIMI					(rhs.fSourceMIMI)
+	,	fSourceMIME					(rhs.fSourceMIME)
 
 	{
 
@@ -633,6 +667,10 @@ void dng_metadata::SetEmbeddedXMP (dng_host &host,
 
 void dng_metadata::SynchronizeMetadata ()
 	{
+
+	DNG_REQUIRE (fExif.Get (),
+				 "Expected valid fExif field in "
+				 "dng_metadata::SynchronizeMetadata");
 	
 	if (!fOriginalExif.Get ())
 		{
@@ -717,14 +755,18 @@ dng_negative::dng_negative (dng_host &host)
 	,	fRawToFullScaleV				(1.0)
 	,	fBaselineNoise					(100, 100)
 	,	fNoiseReductionApplied			(0, 0)
+    ,   fRawNoiseReductionApplied       (0, 0)
 	,	fNoiseProfile					()
+    ,   fRawNoiseProfile                ()
 	,	fBaselineExposure				(  0, 100)
 	,	fBaselineSharpness				(100, 100)
+    ,   fRawBaselineSharpness           (0, 0)
 	,	fChromaBlurRadius				()
 	,	fAntiAliasStrength				(100, 100)
 	,	fLinearResponseLimit			(100, 100)
 	,	fShadowScale					(1, 1)
 	,	fColorimetricReference			(crSceneReferred)
+    ,   fFloatingPoint                  (false)
 	,	fColorChannels					(0)
 	,	fAnalogBalance					()
 	,	fCameraNeutral					()
@@ -752,10 +794,12 @@ dng_negative::dng_negative (dng_host &host)
 	,	fStage2Image					()
 	,	fStage3Image					()
 	,	fStage3Gain						(1.0)
+	,	fStage3BlackLevel				(0)
 	,	fIsPreview						(false)
 	,	fIsDamaged						(false)
 	,	fRawImageStage					(rawImageStageNone)
 	,	fRawImage						()
+    ,   fRawImageBlackLevel             (0)
 	,	fRawFloatBitDepth				(0)
 	,	fRawJPEGImage					()
 	,	fRawJPEGImageDigest				()
@@ -763,6 +807,15 @@ dng_negative::dng_negative (dng_host &host)
 	,	fRawTransparencyMask			()
 	,	fRawTransparencyMaskBitDepth	(0)
 	,	fUnflattenedStage3Image			()
+    ,	fHasDepthMap					(false)
+    ,   fDepthMap                       ()
+    ,   fRawDepthMap                    ()
+    ,   fDepthFormat                    (depthFormatUnknown)
+    ,   fDepthNear                      (0, 0)
+    ,   fDepthFar                       (0, 0)
+    ,   fDepthUnits                     (depthUnitsUnknown)
+    ,   fDepthMeasureType               (depthMeasureUnknown)
+    ,   fEnhanceParams                  ()
 
 	{
 
@@ -1159,8 +1212,8 @@ void dng_negative::ClearProfiles (bool clearBuiltinMatrixProfiles,
 	
 	// Delete any camera profiles in this negative that match the specified criteria.
 
-	std::vector<dng_camera_profile *>::iterator iter = fCameraProfile.begin ();
-	std::vector<dng_camera_profile *>::iterator next;
+	dng_std_vector<dng_camera_profile *>::iterator iter = fCameraProfile.begin ();
+	dng_std_vector<dng_camera_profile *>::iterator next;
 	
 	for (; iter != fCameraProfile.end (); iter = next)
 		{
@@ -1438,22 +1491,17 @@ dng_color_spec * dng_negative::MakeColorSpec (const dng_camera_profile_id &id) c
 /*****************************************************************************/
 
 dng_fingerprint dng_negative::FindImageDigest (dng_host &host,
-											   const dng_image &image) const
+											   const dng_image &image)
 	{
 	
 	dng_md5_printer printer;
 	
-	dng_pixel_buffer buffer;
-	
-	buffer.fPlane  = 0;
-	buffer.fPlanes = image.Planes ();
-	
-	buffer.fRowStep   = image.Planes () * image.Width ();
-	buffer.fColStep   = image.Planes ();
-	buffer.fPlaneStep = 1;
-	
-	buffer.fPixelType = image.PixelType ();
-	buffer.fPixelSize = image.PixelSize ();
+	dng_pixel_buffer buffer (image.Bounds (), 
+							 0, 
+							 image.Planes (),
+							 image.PixelType (), 
+							 pcInterleaved, 
+							 NULL);
 	
 	// Sometimes we expand 8-bit data to 16-bit data while reading or
 	// writing, so always compute the digest of 8-bit data as 16-bits.
@@ -1466,7 +1514,15 @@ dng_fingerprint dng_negative::FindImageDigest (dng_host &host,
 	
 	const uint32 kBufferRows = 16;
 	
-	uint32 bufferBytes = kBufferRows * buffer.fRowStep * buffer.fPixelSize;
+	uint32 bufferBytes = 0;
+	
+	if (!SafeUint32Mult (kBufferRows, buffer.fRowStep,	 &bufferBytes) ||
+		!SafeUint32Mult (bufferBytes, buffer.fPixelSize, &bufferBytes))
+		{
+		
+		ThrowOverflow ("Arithmetic overflow computing buffer size.");
+		
+		}
 	
 	AutoPtr<dng_memory_block> bufferData (host.Allocate (bufferBytes));
 	
@@ -1603,8 +1659,10 @@ class dng_find_new_raw_image_digest_task : public dng_area_task
 	
 		dng_find_new_raw_image_digest_task (const dng_image &image,
 											uint32 pixelType)
+
+			:	dng_area_task ("dng_find_new_raw_image_digest_task")
 		
-			:	fImage       (image)
+			,	fImage       (image)
 			,	fPixelType   (pixelType)
 			,	fPixelSize	 (TagTypeSize (pixelType))
 			,	fTilesAcross (0)
@@ -1624,6 +1682,7 @@ class dng_find_new_raw_image_digest_task : public dng_area_task
 			}
 	
 		virtual void Start (uint32 threadCount,
+							const dng_rect & /* dstArea */,
 							const dng_point &tileSize,
 							dng_memory_allocator *allocator,
 							dng_abort_sniffer * /* sniffer */)
@@ -1641,10 +1700,11 @@ class dng_find_new_raw_image_digest_task : public dng_area_task
 						 
 			fTileHash.Reset (new dng_fingerprint [fTileCount]);
 			
-			uint32 bufferSize = fImage.Planes () *
-								fPixelSize *
-								tileSize.h *
-								tileSize.v;
+			const uint32 bufferSize =
+				ComputeBufferSize (fPixelType, 
+								   tileSize, 
+								   fImage.Planes (),
+								   padNone);
 								
 			for (uint32 index = 0; index < threadCount; index++)
 				{
@@ -1669,21 +1729,12 @@ class dng_find_new_raw_image_digest_task : public dng_area_task
 			
 			uint32 tileIndex = rowIndex * fTilesAcross + colIndex;
 			
-			dng_pixel_buffer buffer;
-			
-			buffer.fArea = tile;
-			
-			buffer.fPlane  = 0;
-			buffer.fPlanes = fImage.Planes ();
-			
-			buffer.fRowStep   = tile.W ();
-			buffer.fColStep   = 1;
-			buffer.fPlaneStep = tile.W () * tile.H ();
-			
-			buffer.fPixelType = fPixelType;
-			buffer.fPixelSize = fPixelSize;
-	
-			buffer.fData = fBufferData [threadIndex]->Buffer ();
+			dng_pixel_buffer buffer (tile, 
+									 0, 
+									 fImage.Planes (),
+									 fPixelType, 
+									 pcPlanar,
+									 fBufferData [threadIndex]->Buffer ());
 			
 			fImage.Get (buffer);
 			
@@ -2003,16 +2054,41 @@ void dng_negative::ValidateRawImageDigest (dng_host &host)
 
 /*****************************************************************************/
 
+dng_fingerprint dng_negative::RawDataUniqueID () const
+    {
+    
+    dng_lock_std_mutex lock (fRawDataUniqueIDMutex);
+    
+    if (fRawDataUniqueID.IsValid () && fEnhanceParams.NotEmpty ())
+        {
+        
+        dng_md5_printer printer;
+        
+        printer.Process (fRawDataUniqueID.data, 16);
+        
+        printer.Process (fEnhanceParams.Get    (),
+                         fEnhanceParams.Length ());
+            
+        return printer.Result ();
+
+        }
+        
+    return fRawDataUniqueID;
+    
+    }
+
+/*****************************************************************************/
+
 // If the raw data unique ID is missing, compute one based on a MD5 hash of
 // the raw image hash and the model name, plus other commonly changed
 // data that can affect rendering.
 
 void dng_negative::FindRawDataUniqueID (dng_host &host) const
 	{
-	
-	if (fRawDataUniqueID.IsNull ())
+    
+	if (RawDataUniqueID ().IsNull ())
 		{
-		
+        
 		dng_md5_printer_stream printer;
 		
 		// If we have a raw jpeg image, it is much faster to
@@ -2081,6 +2157,8 @@ void dng_negative::FindRawDataUniqueID (dng_host &host) const
 		fOpcodeList1.FingerprintToStream (printer);
 		fOpcodeList2.FingerprintToStream (printer);
 		fOpcodeList3.FingerprintToStream (printer);
+        
+        dng_lock_std_mutex lock (fRawDataUniqueIDMutex);
 		
 		fRawDataUniqueID = printer.Result ();
 	
@@ -2394,6 +2472,64 @@ void dng_negative::SetQuadBlacks (real64 black0,
 
 /*****************************************************************************/
 
+void dng_negative::Set6x6Blacks (real64 blacks6x6 [36],
+								  int32 plane)
+	{
+	
+	NeedLinearizationInfo ();
+	
+	dng_linearization_info &info = *fLinearizationInfo.Get ();
+								    
+	info.fBlackLevelRepeatRows = 6;
+	info.fBlackLevelRepeatCols = 6;
+
+	if (plane < 0)
+		{
+		
+		// Apply the black levels to each image plane up to kMaxSamplesPerPixel.
+		
+		for (uint32 p = 0; p < kMaxSamplesPerPixel; p++)
+			{
+			
+			uint32 m = 0;
+			
+			for (uint32 r = 0; r < info.fBlackLevelRepeatRows; r++)
+				for (uint32 c = 0; c < info.fBlackLevelRepeatCols; c++)
+					{
+						
+					info.fBlackLevel [r] [c] [p] = blacks6x6 [m];
+					
+					m++;
+						
+					}
+			}
+		}
+	
+	else
+		{
+		
+		uint32 m = 0;
+		
+		// Apply the black levels to a single plane.
+		
+		for (uint32 r = 0; r < info.fBlackLevelRepeatRows; r++)
+			for (uint32 c = 0; c < info.fBlackLevelRepeatCols; c++)
+				{
+					
+				info.fBlackLevel [r] [c] [plane] = blacks6x6 [m];
+					
+				m++;
+					
+				}
+		
+		}
+		
+	info.RoundBlacks ();
+		
+	}
+
+/*****************************************************************************/
+
 void dng_negative::SetRowBlacks (const real64 *blacks,
 				   		   		 uint32 count)
 	{
@@ -2405,13 +2541,14 @@ void dng_negative::SetRowBlacks (const real64 *blacks,
 		
 		dng_linearization_info &info = *fLinearizationInfo.Get ();
 		
-		uint32 byteCount = count * (uint32) sizeof (real64);
-									    
-		info.fBlackDeltaV.Reset (Allocator ().Allocate (byteCount));
+		dng_safe_uint32 byteCount = 
+			dng_safe_uint32 (count) * (uint32) sizeof (real64);
+		
+		info.fBlackDeltaV.Reset (Allocator ().Allocate (byteCount.Get ()));
 		
 		DoCopyBytes (blacks,
 					 info.fBlackDeltaV->Buffer (),
-					 byteCount);
+					 byteCount.Get ());
 		
 		info.RoundBlacks ();
 		
@@ -2441,13 +2578,14 @@ void dng_negative::SetColumnBlacks (const real64 *blacks,
 		
 		dng_linearization_info &info = *fLinearizationInfo.Get ();
 		
-		uint32 byteCount = count * (uint32) sizeof (real64);
-									    
-		info.fBlackDeltaH.Reset (Allocator ().Allocate (byteCount));
+		dng_safe_uint32 byteCount = 
+			dng_safe_uint32 (count) * (uint32) sizeof (real64);
+		
+		info.fBlackDeltaH.Reset (Allocator ().Allocate (byteCount.Get ()));
 		
 		DoCopyBytes (blacks,
 					 info.fBlackDeltaH->Buffer (),
-					 byteCount);
+					 byteCount.Get ());
 		
 		info.RoundBlacks ();
 		
@@ -2878,7 +3016,7 @@ void dng_negative::Parse (dng_host &host,
 	
 	// Find IFD holding the main raw information.
 	
-	dng_ifd &rawIFD = *info.fIFD [info.fMainIndex].Get ();
+	dng_ifd &rawIFD = *info.fIFD [info.fMainIndex];
 	
 	// Model name.
 	
@@ -2933,11 +3071,50 @@ void dng_negative::Parse (dng_host &host,
 	
 	// NoiseReductionApplied.
 	
-	SetNoiseReductionApplied (shared.fNoiseReductionApplied);
+    // Kludge: DNG spec says that NoiseReductionApplied tag should be in the
+    // Raw IFD, not main IFD. However, our original DNG SDK implementation
+    // read/wrote this tag from/to the main IFD. We now support reading the
+    // NoiseReductionApplied tag from both locations, but prefer the raw IFD
+    // (correct location).
+
+    if (rawIFD.fNoiseReductionApplied.IsValid ())
+        {
+        
+        SetNoiseReductionApplied (rawIFD.fNoiseReductionApplied);
+
+        }
+        
+    else
+        {
+
+        const dng_ifd &ifd0 = *info.fIFD [0];
+
+        SetNoiseReductionApplied (ifd0.fNoiseReductionApplied);
+
+        }
 
 	// NoiseProfile.
 
-	SetNoiseProfile (shared.fNoiseProfile);
+	// Kludge: DNG spec says that NoiseProfile tag should be in the Raw IFD,
+	// not main IFD. However, our original DNG SDK implementation read/wrote
+	// this tag from/to the main IFD. We now support reading the NoiseProfile
+	// tag from both locations, but prefer the raw IFD (correct location).
+
+	if (rawIFD.fNoiseProfile.IsValid ())
+		{
+
+		SetNoiseProfile (rawIFD.fNoiseProfile);
+
+		}
+
+	else
+		{
+
+		const dng_ifd &ifd0 = *info.fIFD [0];
+
+		SetNoiseProfile (ifd0.fNoiseProfile);
+
+		}
 	
 	// Baseline exposure.
 	
@@ -2966,7 +3143,11 @@ void dng_negative::Parse (dng_host &host,
 	// Colorimetric reference.
 	
 	SetColorimetricReference (shared.fColorimetricReference);
-	
+
+    // Floating point flag.
+
+    SetFloatingPoint (rawIFD.fSampleFormat [0] == sfFloatingPoint);
+
 	// Color channels.
 		
 	SetColorChannels (shared.fCameraProfile.fColorPlanes);
@@ -3238,7 +3419,42 @@ void dng_negative::Parse (dng_host &host,
 									shared.fOriginalDefaultCropSizeV);
 		
 		}
-		
+  
+    if (shared.fDepthFormat != depthFormatUnknown)
+        {
+        
+        SetDepthFormat (shared.fDepthFormat);
+        
+        }
+    
+    if (shared.fDepthNear != dng_urational (0, 0))
+        {
+        
+        SetDepthNear (shared.fDepthNear);
+        
+        }
+    
+    if (shared.fDepthFar != dng_urational (0, 0))
+        {
+        
+        SetDepthFar (shared.fDepthFar);
+        
+        }
+    
+    if (shared.fDepthUnits != depthUnitsUnknown)
+        {
+        
+        SetDepthUnits (shared.fDepthUnits);
+        
+        }
+    
+    if (shared.fDepthMeasureType != depthMeasureUnknown)
+        {
+        
+        SetDepthMeasureType (shared.fDepthMeasureType);
+        
+        }
+    
 	}
 
 /*****************************************************************************/
@@ -3273,6 +3489,20 @@ void dng_negative::SetDefaultOriginalSizes ()
 		
 		}
 
+	}
+
+/*****************************************************************************/
+
+void dng_negative::SetOriginalSizes (const dng_point &size)
+	{
+    
+    SetOriginalDefaultFinalSize (size);
+    
+    SetOriginalBestQualityFinalSize (size);
+    
+    SetOriginalDefaultCropSize (dng_urational (size.h, 1),
+                                dng_urational (size.v, 1));
+	
 	}
 
 /*****************************************************************************/
@@ -3483,12 +3713,31 @@ const dng_image & dng_negative::RawImage () const
 		return *fUnflattenedStage3Image.Get ();
 		}
 		
-	DNG_ASSERT (fStage3Image.Get (),
-				"dng_negative::RawImage with no raw image");
+	DNG_REQUIRE (fStage3Image.Get (),
+				 "dng_negative::RawImage with no raw image");
 		    
 	return *fStage3Image.Get ();
 	
 	}
+
+/*****************************************************************************/
+
+uint16 dng_negative::RawImageBlackLevel () const
+    {
+    
+    if (fRawImage.Get ())
+        {
+        return fRawImageBlackLevel;
+        }
+        
+    if (fStage1Image.Get ())
+        {
+        return 0;
+        }
+        
+    return fStage3BlackLevel;
+    
+    }
 
 /*****************************************************************************/
 
@@ -3548,7 +3797,75 @@ void dng_negative::FindRawJPEGImageDigest (dng_host &host) const
 		}
 	
 	}
-		
+
+/*****************************************************************************/
+
+void dng_negative::ReadOpcodeLists (dng_host &host,
+                                    dng_stream &stream,
+                                    dng_info &info)
+    {
+    
+    dng_ifd &rawIFD = *info.fIFD [info.fMainIndex];
+    
+    if (rawIFD.fOpcodeList1Count)
+        {
+        
+        #if qDNGValidate
+        
+        if (gVerbose)
+            {
+            printf ("\nParsing OpcodeList1: ");
+            }
+            
+        #endif
+        
+        fOpcodeList1.Parse (host,
+                            stream,
+                            rawIFD.fOpcodeList1Count,
+                            rawIFD.fOpcodeList1Offset);
+        
+        }
+        
+    if (rawIFD.fOpcodeList2Count)
+        {
+        
+        #if qDNGValidate
+        
+        if (gVerbose)
+            {
+            printf ("\nParsing OpcodeList2: ");
+            }
+            
+        #endif
+        
+        fOpcodeList2.Parse (host,
+                            stream,
+                            rawIFD.fOpcodeList2Count,
+                            rawIFD.fOpcodeList2Offset);
+        
+        }
+
+    if (rawIFD.fOpcodeList3Count)
+        {
+        
+        #if qDNGValidate
+        
+        if (gVerbose)
+            {
+            printf ("\nParsing OpcodeList3: ");
+            }
+            
+        #endif
+        
+        fOpcodeList3.Parse (host,
+                            stream,
+                            rawIFD.fOpcodeList3Count,
+                            rawIFD.fOpcodeList3Offset);
+        
+        }
+
+    }
+
 /*****************************************************************************/
 
 void dng_negative::ReadStage1Image (dng_host &host,
@@ -3558,7 +3875,7 @@ void dng_negative::ReadStage1Image (dng_host &host,
 	
 	// Allocate image we are reading.
 	
-	dng_ifd &rawIFD = *info.fIFD [info.fMainIndex].Get ();
+	dng_ifd &rawIFD = *info.fIFD [info.fMainIndex];
 	
 	fStage1Image.Reset (host.Make_dng_image (rawIFD.Bounds (),
 											 rawIFD.fSamplesPerPixel,
@@ -3626,66 +3943,153 @@ void dng_negative::ReadStage1Image (dng_host &host,
 					  
 	// We are are reading the main image, we should read the opcode lists
 	// also.
-	
-	if (rawIFD.fOpcodeList1Count)
-		{
-		
-		#if qDNGValidate
-		
-		if (gVerbose)
-			{
-			printf ("\nParsing OpcodeList1: ");
-			}
-			
-		#endif
-		
-		fOpcodeList1.Parse (host,
-							stream,
-							rawIFD.fOpcodeList1Count,
-							rawIFD.fOpcodeList1Offset);
-		
-		}
-		
-	if (rawIFD.fOpcodeList2Count)
-		{
-		
-		#if qDNGValidate
-		
-		if (gVerbose)
-			{
-			printf ("\nParsing OpcodeList2: ");
-			}
-			
-		#endif
-		
-		fOpcodeList2.Parse (host,
-							stream,
-							rawIFD.fOpcodeList2Count,
-							rawIFD.fOpcodeList2Offset);
-		
-		}
-
-	if (rawIFD.fOpcodeList3Count)
-		{
-		
-		#if qDNGValidate
-		
-		if (gVerbose)
-			{
-			printf ("\nParsing OpcodeList3: ");
-			}
-			
-		#endif
-		
-		fOpcodeList3.Parse (host,
-							stream,
-							rawIFD.fOpcodeList3Count,
-							rawIFD.fOpcodeList3Offset);
-		
-		}
+ 
+    ReadOpcodeLists (host,
+                     stream,
+                     info);
 
 	}
-					
+
+/*****************************************************************************/
+
+void dng_negative::ReadEnhancedImage (dng_host &host,
+                                      dng_stream &stream,
+                                      dng_info &info)
+    {
+    
+    // Allocate image we are reading.
+    
+    dng_ifd &enhancedIFD = *info.fIFD [info.fEnhancedIndex];
+    
+    fStage3Image.Reset (host.Make_dng_image (enhancedIFD.Bounds (),
+                                             enhancedIFD.fSamplesPerPixel,
+                                             enhancedIFD.PixelType ()));
+
+    // Read the image.
+    
+    enhancedIFD.ReadImage (host,
+                           stream,
+                           *fStage3Image.Get ());
+        
+    // Remember the enhance parameters.
+    
+    SetEnhanceParams (enhancedIFD.fEnhanceParams);
+        
+    // Stage 3 black level.
+    
+    SetStage3BlackLevel ((uint16) Round_uint32 (enhancedIFD.fBlackLevel [0] [0] [0]));
+    
+    // We are are reading the enhanced image, we should read the opcode lists
+    // also, since we at least need to know about lens opcodes.
+ 
+    ReadOpcodeLists (host,
+                     stream,
+                     info);
+
+    // Should we read the raw image also?
+    
+    bool needRawImage = host.SaveDNGVersion () != 0 &&
+                       !host.SaveLinearDNG (*this);
+        
+    // Read in raw image data if required.
+    
+    if (needRawImage)
+        {
+        
+        dng_ifd &mainIFD = *info.fIFD [info.fMainIndex];
+        
+        fRawImage.Reset (host.Make_dng_image (mainIFD.Bounds (),
+                                              mainIFD.fSamplesPerPixel,
+                                              mainIFD.PixelType ()));
+            
+        mainIFD.ReadImage (host,
+                           stream,
+                           *fRawImage.Get ());
+
+        }
+
+    // Baseline sharpness.
+    
+    if (enhancedIFD.fBaselineSharpness.IsValid ())
+        {
+        
+        SetRawBaselineSharpness ();
+        
+        fBaselineSharpness = enhancedIFD.fBaselineSharpness;
+        
+        }
+        
+    // Noise reduction applied.
+    
+    if (enhancedIFD.fNoiseReductionApplied.IsValid ())
+        {
+        
+        SetRawNoiseReductionApplied ();
+        
+        fNoiseReductionApplied = enhancedIFD.fNoiseReductionApplied;
+        
+        }
+        
+    // Noise profile.
+    
+    if (enhancedIFD.fNoiseProfile.IsValidForNegative (*this))
+        {
+        
+        SetRawNoiseProfile ();
+        
+        fNoiseProfile = enhancedIFD.fNoiseProfile;
+        
+        }
+        
+    // Raw to full scale.
+    
+    if (fLinearizationInfo.Get ())
+        {
+        
+        if (fLinearizationInfo->fActiveArea.W ())
+            {
+            fRawToFullScaleH = (real64) fStage3Image->Bounds ().W () /
+                               (real64) fLinearizationInfo->fActiveArea.W ();
+            }
+        
+        if (fLinearizationInfo->fActiveArea.H ())
+            {
+            fRawToFullScaleV = (real64) fStage3Image->Bounds ().H () /
+                               (real64) fLinearizationInfo->fActiveArea.H ();
+            }
+        
+       }
+       
+    if (!needRawImage)
+        {
+       
+        ClearLinearizationInfo ();
+        
+        ClearMosaicInfo ();
+        
+        fOpcodeList1.Clear ();
+        fOpcodeList2.Clear ();
+        fOpcodeList3.Clear ();
+        
+        fRawImageDigest   .Clear ();
+        fNewRawImageDigest.Clear ();
+        
+        fRawBaselineSharpness    .Clear ();
+        fRawNoiseReductionApplied.Clear ();
+        
+        fRawNoiseProfile = dng_noise_profile ();
+
+        if (fRawDataUniqueID.IsValid ())
+            {
+            fRawDataUniqueID = RawDataUniqueID ();
+            }
+        
+        fEnhanceParams.Clear ();
+
+        }
+        
+    }
+
 /*****************************************************************************/
 
 void dng_negative::SetStage1Image (AutoPtr<dng_image> &image)
@@ -3710,7 +4114,10 @@ void dng_negative::SetStage3Image (AutoPtr<dng_image> &image)
 	{
 	
 	fStage3Image.Reset (image.Release ());
-	
+
+	SetFloatingPoint (fStage3Image.Get () &&
+					  (fStage3Image->PixelType () == ttFloat));
+
 	}
 
 /*****************************************************************************/
@@ -3737,6 +4144,7 @@ void dng_negative::DoBuildStage2 (dng_host &host)
 											 pixelType));
 								   
 	info.Linearize (host,
+                    *this,
 					stage1,
 					*fStage2Image.Get ());
 							 
@@ -3808,6 +4216,14 @@ void dng_negative::BuildStage2Image (dng_host &host)
 			{
 			fRawImageStage = rawImageStagePostOpcode3;
 			}
+            
+        // If we are not doing a full resolution read, then always save the DNG
+        // from the processed stage 3 image.
+
+        else if (host.PreferredSize ())
+            {
+			fRawImageStage = rawImageStagePostOpcode3;
+            }
 			
 		else if (host.SaveLinearDNG (*this))
 			{
@@ -3866,7 +4282,25 @@ void dng_negative::BuildStage2Image (dng_host &host)
 				}
 				
 			}
-			
+
+		// If the host is requesting a negative read for fast conversion to
+		// DNG, then check whether we can actually do a fast interpolation or
+		// not. For now, keep the logic simple. If the raw image stage is the
+		// pre-opcode stage 1 image (original), then proceed with trying a
+		// fast/downsampled interpolation when building the stage 3 image.
+		// Otherwise, turn off the attempted optimization.
+
+		if (host.ForFastSaveToDNG () &&
+			(fRawImageStage > rawImageStagePreOpcode1))
+			{
+
+			// Disable/revert the optimization attempt, and do a normal
+			// interpolation when building the stage 3 image.
+
+			host.SetForFastSaveToDNG (false, 0);
+
+			}
+
 		}
 		
 	// Grab clone of raw image if required.
@@ -3880,7 +4314,12 @@ void dng_negative::BuildStage2Image (dng_host &host)
 			{
 			fRawTransparencyMask.Reset (fTransparencyMask->Clone ());
 			}
-		
+   
+        if (fDepthMap.Get ())
+            {
+            fRawDepthMap.Reset (fDepthMap->Clone ());
+            }
+   
 		}
 
 	else
@@ -3931,6 +4370,11 @@ void dng_negative::BuildStage2Image (dng_host &host)
 			fRawTransparencyMask.Reset (fTransparencyMask->Clone ());
 			}
 		
+        if (fDepthMap.Get ())
+            {
+            fRawDepthMap.Reset (fDepthMap->Clone ());
+            }
+   
 		}
 
 	// Finalize linearization info.
@@ -3994,12 +4438,19 @@ void dng_negative::BuildStage2Image (dng_host &host)
 		{
 		
 		fRawImage.Reset (fStage2Image->Clone ());
+  
+        fRawImageBlackLevel = fStage3BlackLevel;
 		
 		if (fTransparencyMask.Get ())
 			{
 			fRawTransparencyMask.Reset (fTransparencyMask->Clone ());
 			}
 		
+        if (fDepthMap.Get ())
+            {
+            fRawDepthMap.Reset (fDepthMap->Clone ());
+            }
+   
 		}
 	
 	}
@@ -4007,16 +4458,37 @@ void dng_negative::BuildStage2Image (dng_host &host)
 /*****************************************************************************/
 
 void dng_negative::DoInterpolateStage3 (dng_host &host,
-								        int32 srcPlane)
+								        int32 srcPlane,
+                                        dng_matrix *scaleTransforms)
 	{
 	
 	dng_image &stage2 = *fStage2Image.Get ();
 		
 	dng_mosaic_info &info = *fMosaicInfo.Get ();
 	
-	dng_point downScale = info.DownScale (host.MinimumSize   (),
-										  host.PreferredSize (),
-										  host.CropFactor    ());
+	dng_point downScale;
+
+	const bool fastSaveToDNG = host.ForFastSaveToDNG ();
+
+	const uint32 fastSaveSize = host.FastSaveToDNGSize ();
+	
+	if (fastSaveToDNG && (fastSaveSize > 0))
+		{
+
+		downScale = info.DownScale (host.MinimumSize       (),
+									host.FastSaveToDNGSize (),
+									host.CropFactor        ());
+
+		}
+
+	else
+		{
+
+		downScale = info.DownScale (host.MinimumSize   (),
+									host.PreferredSize (),
+									host.CropFactor    ());
+
+		}
 	
 	if (downScale != dng_point (1, 1))
 		{
@@ -4024,7 +4496,7 @@ void dng_negative::DoInterpolateStage3 (dng_host &host,
 		}
 	
 	dng_point dstSize = info.DstSize (downScale);
-			
+	
 	fStage3Image.Reset (host.Make_dng_image (dng_rect (dstSize),
 											 info.fColorPlanes,
 											 stage2.PixelType ()));
@@ -4039,7 +4511,8 @@ void dng_negative::DoInterpolateStage3 (dng_host &host,
 					  stage2,
 					  *fStage3Image.Get (),
 					  downScale,
-					  srcPlane);
+					  srcPlane,
+                      scaleTransforms);
 
 	}
 									   
@@ -4047,13 +4520,14 @@ void dng_negative::DoInterpolateStage3 (dng_host &host,
 
 // Interpolate and merge a multi-channel CFA image.
 
-void dng_negative::DoMergeStage3 (dng_host &host)
+void dng_negative::DoMergeStage3 (dng_host &host,
+                                  dng_matrix *scaleTransforms)
 	{
 	
 	// The DNG SDK does not provide multi-channel CFA image merging code.
 	// It just grabs the first channel and uses that.
 	
-	DoInterpolateStage3 (host, 0);
+	DoInterpolateStage3 (host, 0, scaleTransforms);
 				   
 	// Just grabbing the first channel would often result in the very
 	// bright image using the baseline exposure value.
@@ -4065,7 +4539,8 @@ void dng_negative::DoMergeStage3 (dng_host &host)
 /*****************************************************************************/
 
 void dng_negative::DoBuildStage3 (dng_host &host,
-								  int32 srcPlane)
+								  int32 srcPlane,
+                                  dng_matrix *scaleTransforms)
 	{
 	
 	// If we don't have a mosaic pattern, then just move the stage 2
@@ -4092,7 +4567,8 @@ void dng_negative::DoBuildStage3 (dng_host &host,
 		if ((fStage2Image->Planes () > 1) && (srcPlane < 0))
 			{
 			
-			DoMergeStage3 (host);
+			DoMergeStage3 (host,
+                           scaleTransforms);
 			
 			}
 			
@@ -4101,7 +4577,9 @@ void dng_negative::DoBuildStage3 (dng_host &host,
 		else
 			{
 				
-			DoInterpolateStage3 (host, srcPlane);
+			DoInterpolateStage3 (host,
+                                 srcPlane,
+                                 scaleTransforms);
 						   
 			}
 		
@@ -4135,18 +4613,32 @@ void dng_negative::BuildStage3Image (dng_host &host,
 		
 	// Do the interpolation as required.
 	
-	DoBuildStage3 (host, srcPlane);
+	DoBuildStage3 (host, srcPlane, NULL);
 	
-	// Delete the stage2 image now that we have computed the stage 3 image.
+	// Delete the stage2 image now that we have computed the stage 3 image,
+	// unless the host wants to preserve it.
+
+	if (!host.WantsPreserveStage2 ())
+		{
 	
-	fStage2Image.Reset ();
+		fStage2Image.Reset ();
+
+		}
 	
 	// Are we done with the mosaic info?
 	
 	if (fRawImageStage >= rawImageStagePreOpcode3)
 		{
+
+		// If we're preserving the stage 2 image, also preserve the mosaic
+		// info.
+
+		if (!host.WantsPreserveStage2 ())
+			{
 		
-		ClearMosaicInfo ();
+			ClearMosaicInfo ();
+
+			}
 		
 		// To support saving linear DNG files, to need to account for
 		// and upscaling during interpolation.
@@ -4189,12 +4681,19 @@ void dng_negative::BuildStage3Image (dng_host &host,
 		{
 		
 		fRawImage.Reset (fStage3Image->Clone ());
+  
+        fRawImageBlackLevel = fStage3BlackLevel;
 		
 		if (fTransparencyMask.Get ())
 			{
 			fRawTransparencyMask.Reset (fTransparencyMask->Clone ());
 			}
 
+        if (fDepthMap.Get ())
+            {
+            fRawDepthMap.Reset (fDepthMap->Clone ());
+            }
+   
 		}
 		
 	// Process opcode list 3.
@@ -4205,8 +4704,15 @@ void dng_negative::BuildStage3Image (dng_host &host,
 	
 	if (fRawImageStage > rawImageStagePreOpcode3)
 		{
+
+		// Currently re-use the same flag for preserving the opcode list.
+
+		if (!host.WantsPreserveStage2 ())
+			{
 		
-		fOpcodeList3.Clear ();
+			fOpcodeList3.Clear ();
+
+			}
 		
 		}
 		
@@ -4216,6 +4722,15 @@ void dng_negative::BuildStage3Image (dng_host &host,
 	
 	ResizeTransparencyToMatchStage3 (host);
  
+    // Depth maps are often lower resolution than the main image,
+    // so make sure we upsample if required.
+    
+    ResizeDepthToMatchStage3 (host);
+    
+    // Update Floating Point flag.
+ 
+    SetFloatingPoint (fStage3Image->PixelType () == ttFloat);
+	
 	// Don't need to grab a copy of raw data at this stage since
 	// it is kept around as the stage 3 image.
 	
@@ -4223,62 +4738,148 @@ void dng_negative::BuildStage3Image (dng_host &host,
 		
 /******************************************************************************/
 
+// RESEARCH: Instead of using a constant slope, consider using a family
+// of slopes ranging from the original one (1/16) to a limit of 1/128,
+// depending on the histogram distribution.
+
+static const real64 kSceneProxyCurveSlope = 1.0 / 128.0;
+
+static inline real64 SceneProxyCurve (real64 x)
+    {
+    
+    // The following code evaluates the inverse of:
+    //
+    // f (x) = (s * x) + ((1 - s) * x^3)
+    //
+    // where s is the slope of the function at the origin (x==0).
+
+    static const real64 s = kSceneProxyCurveSlope;
+
+    static const real64 k0 = pow (2.0, 1.0 / 3.0);
+
+    static const real64 k1 = 108.0 * s * s * s * (1.0 - s) * (1.0 - s) * (1.0 - s);
+
+    real64 k2 = (27.0 * x) - (54.0 * s * x) + (27.0 * x * s * s);
+
+    real64 k3 = pow (k2 + sqrt (k1 + k2 * k2), 1.0 / 3.0);
+
+    real64 y = (k3 / (3.0 * k0 * (1.0 - s))) - (k0 * s / k3);
+
+    y = Pin_real64 (0.0, y, 1.0);
+    
+    DNG_ASSERT (Abs_real64 (x - (kSceneProxyCurveSlope * y +
+                                (1.0 - kSceneProxyCurveSlope) * y * y * y)) < 0.0000001,
+                "SceneProxyCurve round trip error");
+        
+    return y;
+
+    }
+
+/*****************************************************************************/
+
+static const real64 kOutputProxyCurveSlope = 1.0 / 16.0;
+
+static inline real64 OutputProxyCurve (real64 x)
+    {
+    
+    DNG_ASSERT (kOutputProxyCurveSlope == 1.0 / 16.0,
+                "OutputProxyCurve unexpected slope");
+    
+    real64 y = (sqrt (960.0 * x + 1.0) - 1.0) / 30.0;
+        
+    DNG_ASSERT (Abs_real64 (x - (kOutputProxyCurveSlope * y +
+                                (1.0 - kOutputProxyCurveSlope) * y * y)) < 0.0000001,
+                "OutputProxyCurve round trip error");
+        
+    return y;
+    
+    }
+
+/*****************************************************************************/
+
 class dng_gamma_encode_proxy : public dng_1d_function
 	{
 	
 	private:
 	
-		real64 fBlack;
-		real64 fWhite;
+		real64 fLower;
+		real64 fUpper;
 		
 		bool fIsSceneReferred;
-		
-		real64 scale;
-		real64 t1;
+  
+        real64 fStage3BlackLevel;
+        
+        real64 fBlackLevel;
 		
 	public:
 		
-		dng_gamma_encode_proxy (real64 black,
-							    real64 white,
-							    bool isSceneReferred)
+		dng_gamma_encode_proxy (real64 lower,
+							    real64 upper,
+							    bool isSceneReferred,
+                                real64 stage3BlackLevel,
+                                real64 blackLevel)
 							   
-			:	fBlack (black)
-			,	fWhite (white)
-			,	fIsSceneReferred (isSceneReferred)
-			
-			,	scale (1.0 / (fWhite - fBlack))
-			,	t1 (1.0 / (27.0 * pow (5.0, 3.0 / 2.0)))
+			:	fLower            (lower)
+			,	fUpper            (upper)
+			,	fIsSceneReferred  (isSceneReferred)
+            ,   fStage3BlackLevel (stage3BlackLevel)
+            ,   fBlackLevel       (blackLevel / 255.0)
 			
 			{
+
 			}
 			
 		virtual real64 Evaluate (real64 x) const
 			{
-			
-			x = Pin_real64 (0.0, (x - fBlack) * scale, 1.0);
-			
+
 			real64 y;
 			
 			if (fIsSceneReferred)
 				{
-			
-				real64 t = pow (sqrt (25920.0 * x * x + 1.0) * t1 + x * (8.0 / 15.0), 1.0 / 3.0);
-				
-				y = t - 1.0 / (45.0 * t);
-				
-				DNG_ASSERT (Abs_real64 (x - (y / 16.0 + y * y * y * 15.0 / 16.0)) < 0.0000001,
-							"Round trip error");
-							
+    
+                if (fLower < fStage3BlackLevel)
+                    {
+                    
+                    x = Pin_real64 (-1.0,
+                                    (x - fStage3BlackLevel) / (fUpper - fStage3BlackLevel),
+                                    1.0);
+        
+                    if (x >= 0.0)
+                        {
+                        
+                        y = SceneProxyCurve (x);
+
+                        }
+                        
+                    else
+                        {
+                        
+                        y = -SceneProxyCurve (-x);
+                        
+                        }
+                        
+                    y = Pin_real64 (0.0, y * (1.0 - fBlackLevel) + fBlackLevel, 1.0);
+                    
+                    }
+                    
+                else
+                    {
+    
+                    x = Pin_real64 (0.0, (x - fLower) / (fUpper - fLower), 1.0);
+    
+                    y = SceneProxyCurve (x);
+                    
+                    }
+
 				}
 				
 			else
 				{
+    
+                x = Pin_real64 (0.0, (x - fLower) / (fUpper - fLower), 1.0);
+
+                y = OutputProxyCurve (x);
 				
-				y = (sqrt (960.0 * x + 1.0) - 1.0) / 30.0;
-				
-				DNG_ASSERT (Abs_real64 (x - (y / 16.0 + y * y * (15.0 / 16.0))) < 0.0000001,
-							"Round trip error");
-							
 				}
 				
 			return y;
@@ -4289,7 +4890,8 @@ class dng_gamma_encode_proxy : public dng_1d_function
 
 /*****************************************************************************/
 
-class dng_encode_proxy_task: public dng_area_task
+class dng_encode_proxy_task: public dng_area_task,
+							 private dng_uncopyable
 	{
 	
 	private:
@@ -4305,9 +4907,11 @@ class dng_encode_proxy_task: public dng_area_task
 		dng_encode_proxy_task (dng_host &host,
 							   const dng_image &srcImage,
 							   dng_image &dstImage,
-							   const real64 *black,
-							   const real64 *white,
-							   bool isSceneReferred);
+							   const real64 *lower,
+							   const real64 *upper,
+							   bool isSceneReferred,
+                               real64 stage3BlackLevel,
+                               real64 *blackLevel);
 							 
 		virtual dng_rect RepeatingTile1 () const
 			{
@@ -4323,14 +4927,6 @@ class dng_encode_proxy_task: public dng_area_task
 							  const dng_rect &tile,
 							  dng_abort_sniffer *sniffer);
 								  
-	private:
-	
-		// Hidden copy constructor and assignment operator.
-	
-		dng_encode_proxy_task (const dng_encode_proxy_task &task);
-		
-		dng_encode_proxy_task & operator= (const dng_encode_proxy_task &task);
-	
 	};
 
 /*****************************************************************************/
@@ -4338,29 +4934,67 @@ class dng_encode_proxy_task: public dng_area_task
 dng_encode_proxy_task::dng_encode_proxy_task (dng_host &host,
 											  const dng_image &srcImage,
 										      dng_image &dstImage,
-										      const real64 *black,
-										      const real64 *white,
-										      bool isSceneReferred)
+										      const real64 *lower,
+										      const real64 *upper,
+										      bool isSceneReferred,
+                                              real64 stage3BlackLevel,
+                                              real64 *blackLevel)
+
+	:	dng_area_task ("dng_encode_proxy_task")
 										
-	:	fSrcImage (srcImage)
+	,	fSrcImage (srcImage)
 	,	fDstImage (dstImage)
 	
 	{
-	
+ 
 	for (uint32 plane = 0; plane < fSrcImage.Planes (); plane++)
 		{
 		
-		dng_gamma_encode_proxy gamma (black [plane],
-									  white [plane],
-									  isSceneReferred);
+        fTable16 [plane] . Reset (host.Allocate (0x10000 * sizeof (uint16)));
+  
+		dng_gamma_encode_proxy gamma (lower [plane],
+									  upper [plane],
+									  isSceneReferred,
+                                      stage3BlackLevel,
+                                      blackLevel [plane]);
+            
+        // Compute fast approximation of encoding table.
 									  
-		dng_1d_table table32;
-		
-		table32.Initialize (host.Allocator (), gamma);
-		
-		fTable16 [plane] . Reset (host.Allocate (0x10000 * sizeof (uint16)));
-		
+        dng_1d_table table32;
+        
+        table32.Initialize (host.Allocator (), gamma);
+        
 		table32.Expand16 (fTable16 [plane]->Buffer_uint16 ());
+  
+        // The gamma curve has some fairly high curvature near
+        // the black point, and the above approximation can actually
+        // change results.  So use exact math near the black point.
+        // Still very fast, since we are only computing a small
+        // faction of the range exactly.
+        
+            {
+            
+            const int32 kHighResRadius = 1024;
+            
+            uint32 zeroPt = Round_uint32 (stage3BlackLevel * 65535.0);
+            
+            uint32 highResLower = Max_int32 (0      , zeroPt - kHighResRadius);
+            uint32 highResUpper = Min_int32 (0x10000, zeroPt + kHighResRadius);
+            
+            for (uint32 j = highResLower; j < highResUpper; j++)
+                {
+
+                real64 x = j * (1.0 / 65535.0);
+                
+                real64 y = gamma.Evaluate (x);
+                
+                uint16 z = Pin_uint16 (Round_int32 (y * 65535.0));
+                
+                fTable16 [plane]->Buffer_uint16 () [j] = z;
+                
+                }
+                
+            }
 										 
 		}
 		
@@ -4421,20 +5055,28 @@ void dng_encode_proxy_task::Process (uint32 /* threadIndex */,
 								  
 /******************************************************************************/
 
+bool dng_negative::SupportsPreservedBlackLevels (dng_host & /* host */)
+	{
+	
+	return false;
+	
+	}
+
+/******************************************************************************/
+
 dng_image * dng_negative::EncodeRawProxy (dng_host &host,
 										  const dng_image &srcImage,
-										  dng_opcode_list &opcodeList) const
+										  dng_opcode_list &opcodeList,
+                                          real64 *blackLevel) const
 	{
 	
 	if (srcImage.PixelType () != ttShort)
 		{
 		return NULL;
 		}
-		
-	real64 black [kMaxColorPlanes];
-	real64 white [kMaxColorPlanes];
-	
-	bool isSceneReferred = (ColorimetricReference () == crSceneReferred);
+  
+	real64 lower [kMaxColorPlanes];
+	real64 upper [kMaxColorPlanes];
 	
 		{
 		
@@ -4461,37 +5103,76 @@ dng_image * dng_negative::EncodeRawProxy (dng_host &host,
 						   
 			uint32 total = 0;
 
-			uint32 upper = 65535;
+			uint32 upperIndex = 65535;
 
-			while (total + hist [upper] <= limit && upper > 255)
+			while (total + hist [upperIndex] <= limit && upperIndex > 255)
 				{
 				
-				total += hist [upper];
+				total += hist [upperIndex];
 				
-				upper--;
+				upperIndex--;
 				
 				}
 	
 			total = 0;
 			
-			uint32 lower = 0;
+			uint32 lowerIndex = 0;
 			
-			while (total + hist [lower] <= limit && lower < upper - 255)
+			while (total + hist [lowerIndex] <= limit && lowerIndex < upperIndex - 255)
 				{
 				
-				total += hist [lower];
+				total += hist [lowerIndex];
 				
-				lower++;
+				lowerIndex++;
 				
 				}
-			
-			black [plane] = lower / 65535.0;
-			white [plane] = upper / 65535.0;
+
+			lower [plane] = lowerIndex / 65535.0;
+			upper [plane] = upperIndex / 65535.0;
 		
 			}
 			
 		}
 		
+    bool isSceneReferred = (ColorimetricReference () == crSceneReferred);
+ 
+    real64 stage3BlackLevel = Stage3BlackLevelNormalized ();
+    
+    for (uint32 n = 0; n < kMaxSamplesPerPixel; n++)
+        {
+        blackLevel [n] = 0.0;
+        }
+        
+    if (isSceneReferred && stage3BlackLevel > 0.0)
+        {
+        
+        for (uint32 plane = 0; plane < srcImage.Planes (); plane++)
+            {
+            
+            if (lower [plane] < stage3BlackLevel)
+                {
+
+                upper [plane] = Max_real64 (upper [plane],
+                                            stage3BlackLevel +
+                                            (stage3BlackLevel - lower [plane]) *
+                                            (1.0 / kMaxStage3BlackLevelNormalized - 1.0));
+                    
+                upper [plane] = Min_real64 (upper [plane], 1.0);
+                
+                real64 negRange = SceneProxyCurve ((stage3BlackLevel - lower [plane]) /
+                                                   (upper [plane] - stage3BlackLevel));
+                
+                real64 outBlack = negRange / (1.0 + negRange);
+                
+                blackLevel [plane] = Min_real64 (kMaxStage3BlackLevelNormalized * 255.0,
+                                                 ceil (outBlack * 255.0));
+
+                }
+            
+            }
+
+        }
+    
 	// Apply the gamma encoding, using dither when downsampling to 8-bit.
 	
 	AutoPtr<dng_image> dstImage (host.Make_dng_image (srcImage.Bounds (),
@@ -4503,9 +5184,11 @@ dng_image * dng_negative::EncodeRawProxy (dng_host &host,
 		dng_encode_proxy_task task (host,
 							        srcImage,
 									*dstImage,
-									black,
-									white,
-									isSceneReferred);
+									lower,
+									upper,
+									isSceneReferred,
+                                    stage3BlackLevel,
+                                    blackLevel);
 		
 		host.PerformAreaTask (task,
 							  srcImage.Bounds ());
@@ -4523,27 +5206,47 @@ dng_image * dng_negative::EncodeRawProxy (dng_host &host,
 									plane);
 			
 			real64 coefficient [4];
-			
+
 			coefficient [0] = 0.0;
-			coefficient [1] = 1.0 / 16.0;
-			
+
 			if (isSceneReferred)
 				{
+				coefficient [1] = kSceneProxyCurveSlope;
 				coefficient [2] = 0.0;
-				coefficient [3] = 15.0 / 16.0;
+				coefficient [3] = 1.0 - coefficient [1];
 				}
 			else
 				{
-				coefficient [2] = 15.0 / 16.0;
+				coefficient [1] = kOutputProxyCurveSlope;
+				coefficient [2] = 1.0 - coefficient [1];
 				coefficient [3] = 0.0;
 				}
+    
+            if (lower [plane] < stage3BlackLevel)
+                {
+                
+                real64 rescale = (upper [plane] - stage3BlackLevel) / (1.0 - stage3BlackLevel);
+                
+                coefficient [0] *= rescale;
+                coefficient [1] *= rescale;
+                coefficient [2] *= rescale;
+                coefficient [3] *= rescale;
+
+                }
+                
+            else
+                {
 			
-			coefficient [0] *= white [plane] - black [plane];
-			coefficient [1] *= white [plane] - black [plane];
-			coefficient [2] *= white [plane] - black [plane];
-			coefficient [3] *= white [plane] - black [plane];
-			
-			coefficient [0] += black [plane];
+                real64 rescale = (upper [plane] - lower [plane]) / (1.0 - stage3BlackLevel);
+                
+                coefficient [0] *= rescale;
+                coefficient [1] *= rescale;
+                coefficient [2] *= rescale;
+                coefficient [3] *= rescale;
+                
+                coefficient [0] += (lower [plane] - stage3BlackLevel) / (1.0 - stage3BlackLevel);
+                
+                }
 			
 			AutoPtr<dng_opcode> opcode (new dng_opcode_MapPolynomial (areaSpec,
 																	  isSceneReferred ? 3 : 2,
@@ -4587,7 +5290,7 @@ void dng_negative::ConvertToProxy (dng_host &host,
 		proxyCount = (uint64) proxySize * proxySize;
 		}
 	
-	// Don't need to private data around in non-full size proxies.
+	// Don't need to keep private data around in non-full size proxies.
 	
 	if (proxySize  < kMaxImageSide ||
 		proxyCount < kMaxImageSide * kMaxImageSide)
@@ -4608,6 +5311,8 @@ void dng_negative::ConvertToProxy (dng_host &host,
 		fRawImage->Bounds ().W () <= proxySize &&
 		(uint64) fRawImage->Bounds ().H () *
 		(uint64) fRawImage->Bounds ().W () <= proxyCount &&
+        fRawToFullScaleH == 1.0 &&
+        fRawToFullScaleV == 1.0 &&
 		(!GetMosaicInfo () || !GetMosaicInfo ()->IsColorFilterArray ()) &&
 		fRawJPEGImage.Get () &&
 		(!RawTransparencyMask () || RawTransparencyMask ()->PixelType () == ttByte))
@@ -4623,6 +5328,8 @@ void dng_negative::ConvertToProxy (dng_host &host,
 		fRawImage->Bounds ().W () <= proxySize &&
 		(uint64) fRawImage->Bounds ().H () *
 		(uint64) fRawImage->Bounds ().W () <= proxyCount &&
+        fRawToFullScaleH == 1.0 &&
+        fRawToFullScaleV == 1.0 &&
 		RawFloatBitDepth () == 16 &&
 		(!RawTransparencyMask () || RawTransparencyMask ()->PixelType () == ttByte))
 		{
@@ -4635,6 +5342,8 @@ void dng_negative::ConvertToProxy (dng_host &host,
 	// building the proxy with the stage3 image.
 
 	fRawImage.Reset ();
+ 
+    fRawImageBlackLevel = 0;
 	
 	ClearRawJPEGImage ();
 	
@@ -4672,6 +5381,12 @@ void dng_negative::ConvertToProxy (dng_host &host,
 			{
 			fTransparencyMask->Trim (defaultCropArea);
 			}
+   
+        if (fDepthMap.Get ())
+            {
+            fDepthMap->Trim (defaultCropArea);
+            fRawDepthMap.Reset ();
+            }
 		
 		fDefaultCropOriginH = dng_urational (0, 1);
 		fDefaultCropOriginV = dng_urational (0, 1);
@@ -4723,9 +5438,13 @@ void dng_negative::ConvertToProxy (dng_host &host,
 	// If this is fewer pixels, downsample the stage 3 image to that size.
 	
 	dng_point oldSize = defaultCropArea.Size ();
+    
+    real64 pixelAspect = PixelAspectRatio ();
 	
 	if ((uint64) newSize.v * (uint64) newSize.h <
-		(uint64) oldSize.v * (uint64) oldSize.h)
+		(uint64) oldSize.v * (uint64) oldSize.h ||
+        pixelAspect < 0.99 ||
+        pixelAspect > 1.01)
 		{
 		
 		const dng_image &srcImage (*Stage3Image ());
@@ -4751,6 +5470,26 @@ void dng_negative::ConvertToProxy (dng_host &host,
 		fRawToFullScaleV = 1.0;
 		
 		}
+        
+    // If there is still a raw to full scale factor, we need to
+    // remove it and adjust the crop coordinates.
+        
+    else if (fRawToFullScaleH != 1.0 ||
+             fRawToFullScaleV != 1.0)
+        {
+        
+		fDefaultCropSizeH = dng_urational (oldSize.h, 1);
+		fDefaultCropSizeV = dng_urational (oldSize.v, 1);
+		
+		fDefaultScaleH = dng_urational (1, 1);
+		fDefaultScaleV = dng_urational (1, 1);
+		
+		fBestQualityScale = dng_urational (1, 1);
+		
+		fRawToFullScaleH = 1.0;
+		fRawToFullScaleV = 1.0;
+        
+        }
 		
 	// Convert 32-bit floating point images to 16-bit floating point to
 	// save space.
@@ -4761,6 +5500,8 @@ void dng_negative::ConvertToProxy (dng_host &host,
 		fRawImage.Reset (host.Make_dng_image (Stage3Image ()->Bounds (),
 											  Stage3Image ()->Planes (),
 											  ttFloat));
+            
+        fRawImageBlackLevel = 0;
 		
 		LimitFloatBitDepth (host,
 							*Stage3Image (),
@@ -4778,18 +5519,28 @@ void dng_negative::ConvertToProxy (dng_host &host,
 		{
 		
 		// Convert 16-bit deep images to 8-bit deep image for saving.
+  
+        real64 blackLevel [kMaxSamplesPerPixel];
 		
 		fRawImage.Reset (EncodeRawProxy (host,
 										 *Stage3Image (),
-										 fOpcodeList2));
+										 fOpcodeList2,
+                                         blackLevel));
+            
+        fRawImageBlackLevel = 0;
 										 
 		if (fRawImage.Get ())
 			{
 			
 			SetWhiteLevel (255);
+   
+            for (uint32 plane = 0; plane < fRawImage->Planes (); plane++)
+                {
+                SetBlackLevel (blackLevel [plane], plane);
+                }
 			
 			// Compute JPEG compressed version.
-			
+
 			if (fRawImage->PixelType () == ttByte &&
 				host.SaveDNGVersion () >= dngVersion_1_4_0_0)
 				{
@@ -4821,12 +5572,42 @@ void dng_negative::ConvertToProxy (dng_host &host,
 		fRawTransparencyMask.Reset (fTransparencyMask->Clone ());
 		
 		}
+  
+    // Deal with depth map.
+    
+    if (DepthMap ())
+        {
+        
+        ResizeDepthToMatchStage3 (host);
+        
+        if (fRawDepthMap.Get ())
+            {
+            
+            if (fRawDepthMap->Bounds ().W () > fDepthMap->Bounds ().W () ||
+                fRawDepthMap->Bounds ().H () > fDepthMap->Bounds ().H ())
+                {
+                fRawDepthMap.Reset ();
+                }
+            
+            }
+
+        }
 		
 	// Recompute the raw data unique ID, since we changed the image data.
 	
 	RecomputeRawDataUniqueID (host);
 			
 	}
+
+/*****************************************************************************/
+
+bool dng_negative::IsProxy () const
+    {
+    
+    return  (DefaultCropSizeH () != OriginalDefaultCropSizeH ()) &&
+            (DefaultCropSizeV () != OriginalDefaultCropSizeV ());
+    
+    }
 
 /*****************************************************************************/
 
@@ -4977,7 +5758,7 @@ void dng_negative::ReadTransparencyMask (dng_host &host,
 	
 		// Allocate image we are reading.
 		
-		dng_ifd &maskIFD = *info.fIFD [info.fMaskIndex].Get ();
+		dng_ifd &maskIFD = *info.fIFD [info.fMaskIndex];
 		
 		fTransparencyMask.Reset (host.Make_dng_image (maskIFD.Bounds (),
 													  1,
@@ -5026,6 +5807,11 @@ void dng_negative::ResizeTransparencyToMatchStage3 (dng_host &host,
 				fRawTransparencyMaskBitDepth = 0;
 				}
 			
+			else if (convertTo8Bit)
+				{
+				fRawTransparencyMaskBitDepth = 8;
+				}
+			
 			}
 			
 		}
@@ -5036,13 +5822,6 @@ void dng_negative::ResizeTransparencyToMatchStage3 (dng_host &host,
 
 bool dng_negative::NeedFlattenTransparency (dng_host & /* host */)
 	{
-	
-	if (TransparencyMask ())
-		{
-		
-		return true;
-	
-		}
 	
 	return false;
 		
@@ -5072,5 +5851,91 @@ const dng_image * dng_negative::UnflattenedStage3Image () const
 	return fStage3Image.Get ();
 		
 	}
+
+/*****************************************************************************/
+
+void dng_negative::SetDepthMap (AutoPtr<dng_image> &depthMap)
+	{
+	
+	fDepthMap.Reset (depthMap.Release ());
+	
+	SetHasDepthMap (fDepthMap.Get () != NULL);
+	
+	}
+
+/*****************************************************************************/
+
+void dng_negative::ReadDepthMap (dng_host &host,
+                                 dng_stream &stream,
+                                 dng_info &info)
+    {
+    
+    if (info.fDepthIndex != -1)
+        {
+    
+        // Allocate image we are reading.
+        
+        dng_ifd &depthIFD = *info.fIFD [info.fDepthIndex];
+        
+        fDepthMap.Reset (host.Make_dng_image (depthIFD.Bounds (),
+                                              1,
+                                              depthIFD.PixelType ()));
+            
+        // Read the image.
+        
+        depthIFD.ReadImage (host,
+                            stream,
+                            *fDepthMap.Get ());
+		
+		SetHasDepthMap (fDepthMap.Get () != NULL);
+			
+        }
+
+    }
+
+/*****************************************************************************/
+
+void dng_negative::ResizeDepthToMatchStage3 (dng_host &host)
+    {
+    
+    if (DepthMap ())
+        {
+        
+        if (DepthMap ()->Bounds () != fStage3Image->Bounds ())
+            {
+            
+            // If we are upsampling, and have not grabbed the raw depth map
+            // yet, do so now.
+            
+            if (!fRawDepthMap.Get ())
+                {
+                
+                uint64 imagePixels = fStage3Image->Bounds ().H () * (uint64)
+                                     fStage3Image->Bounds ().W ();
+                    
+                uint64 depthPixels = DepthMap ()->Bounds ().H () * (uint64)
+                                     DepthMap ()->Bounds ().W ();
+                    
+                if (depthPixels < imagePixels)
+                    {
+                    fRawDepthMap.Reset (fDepthMap->Clone ());
+                    }
+                
+                }
+            
+            AutoPtr<dng_image> newMap (host.Make_dng_image (fStage3Image->Bounds (),
+                                                            1,
+                                                            DepthMap ()->PixelType ()));
+                
+            host.ResampleImage (*DepthMap (),
+                                *newMap);
+                
+            fDepthMap.Reset (newMap.Release ());
+                
+            }
+            
+        }
+        
+    }
 
 /*****************************************************************************/

@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2008-2009 Adobe Systems Incorporated
+// Copyright 2008-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_opcode_list.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_opcode_list.h"
@@ -112,13 +105,18 @@ void dng_opcode_list::Apply (dng_host &host,
 							 dng_negative &negative,
 							 AutoPtr<dng_image> &image)
 	{
+
+	DNG_REQUIRE (image.Get (), "Bad image in dng_opcode_list::Apply");
 	
 	for (uint32 index = 0; index < Count (); index++)
 		{
 		
 		dng_opcode &opcode (Entry (index));
 		
-		if (opcode.AboutToApply (host, negative))
+		if (opcode.AboutToApply (host,
+								 negative,
+								 image->Bounds (),
+								 image->Planes ()))
 			{
 						
 			opcode.Apply (host,

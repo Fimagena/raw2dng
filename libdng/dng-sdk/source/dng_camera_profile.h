@@ -1,15 +1,10 @@
 /******************************************************************************/
-// Copyright 2006-2007 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /******************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_camera_profile.h#2 $ */ 
-/* $DateTime: 2012/07/11 10:36:56 $ */
-/* $Change: 838485 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Support for DNG camera color profile information.
@@ -145,7 +140,7 @@ class dng_camera_profile_id
 			}
 			
 		/// Test for equality of two camera profile IDs.
-		/// \param The id of the camera profile ID to compare.
+		/// \param id The id of the camera profile ID to compare.
 
 		bool operator== (const dng_camera_profile_id &id) const
 			{
@@ -154,7 +149,7 @@ class dng_camera_profile_id
 			}
 
 		/// Test for inequality of two camera profile IDs.
-		/// \param The id of the camera profile ID to compare.
+		/// \param id The id of the camera profile ID to compare.
 
 		bool operator!= (const dng_camera_profile_id &id) const
 			{
@@ -509,6 +504,11 @@ class dng_camera_profile
 
 			}
 
+		/// Getter for camera profile unique ID. Use this ID for uniquely
+		/// identifying profiles (e.g., for syncing purposes).
+
+		dng_fingerprint UniqueID () const;
+
 		/// Getter for camera profile id.
 		/// \retval ID of profile.
 
@@ -546,7 +546,7 @@ class dng_camera_profile
 			}
 
 		/// Getter for camera profile embed policy.
-		/// \param Policy for profile.
+		/// \retval Policy for profile.
 
 		uint32 EmbedPolicy () const
 			{
@@ -714,6 +714,7 @@ class dng_camera_profile
 		void SetProfileCalibrationSignature (const char *signature)
 			{
 			fProfileCalibrationSignature.Set (signature);
+			ClearFingerprint ();
 			}
 
 		/// Returns the profile calibration signature (see ProfileCalibrationSignature

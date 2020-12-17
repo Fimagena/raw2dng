@@ -1,15 +1,10 @@
 /*****************************************************************************/
-// Copyright 2006 Adobe Systems Incorporated
+// Copyright 2006-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
 /*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_temperature.h#2 $ */ 
-/* $DateTime: 2012/07/31 22:04:34 $ */
-/* $Change: 840853 $ */
-/* $Author: tknoll $ */
 
 /** \file
  * Representation of color temperature and offset (tint) using black body
@@ -40,7 +35,7 @@ class dng_temperature
 		dng_temperature ()
 		
 			:	fTemperature (0.0)
-			,	fTint        (0.0)
+			,	fTint		 (0.0)
 			
 			{
 			}
@@ -49,7 +44,7 @@ class dng_temperature
 						 real64 tint)
 		
 			:	fTemperature (temperature)
-			,	fTint        (tint       )
+			,	fTint		 (tint		 )
 			
 			{
 			
@@ -58,7 +53,7 @@ class dng_temperature
 		dng_temperature (const dng_xy_coord &xy)
 		
 			:	fTemperature (0.0)
-			,	fTint        (0.0)
+			,	fTint		 (0.0)
 			
 			{
 			Set_xy_coord (xy);

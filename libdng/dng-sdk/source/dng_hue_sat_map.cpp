@@ -1,16 +1,9 @@
 /*****************************************************************************/
-// Copyright 2007 Adobe Systems Incorporated
+// Copyright 2007-2019 Adobe Systems Incorporated
 // All Rights Reserved.
 //
 // NOTICE:  Adobe permits you to use, modify, and distribute this file in
 // accordance with the terms of the Adobe license agreement accompanying it.
-/*****************************************************************************/
-
-/* $Id: //mondo/dng_sdk_1_4/dng_sdk/source/dng_hue_sat_map.cpp#1 $ */ 
-/* $DateTime: 2012/05/30 13:28:51 $ */
-/* $Change: 832332 $ */
-/* $Author: tknoll $ */
-
 /*****************************************************************************/
 
 #include "dng_hue_sat_map.h"
@@ -23,15 +16,20 @@
 
 /*****************************************************************************/
 
+std::atomic<uint64> dng_hue_sat_map::sRuntimeFingerprintCounter (0);
+
+/*****************************************************************************/
+
 dng_hue_sat_map::dng_hue_sat_map ()
 
-	:	fHueDivisions (0)
-	,	fSatDivisions (0)
-	,	fValDivisions (0)
-	,	fHueStep      (0)
-	,	fValStep	  (0)
-	,	fDeltas       ()
-	
+	:	fHueDivisions       (0)
+	,	fSatDivisions       (0)
+	,	fValDivisions       (0)
+	,	fHueStep            (0)
+	,	fValStep	        (0)
+	,	fRuntimeFingerprint ()
+	,	fDeltas             ()
+
 	{
 	
 	}
@@ -40,12 +38,13 @@ dng_hue_sat_map::dng_hue_sat_map ()
 
 dng_hue_sat_map::dng_hue_sat_map (const dng_hue_sat_map &src)
 
-	:	fHueDivisions (0)
-	,	fSatDivisions (0)
-	,	fValDivisions (0)
-	,	fHueStep      (0)
-	,	fValStep	  (0)
-	,	fDeltas       ()
+	:	fHueDivisions       (0)
+	,	fSatDivisions       (0)
+	,	fValDivisions       (0)
+	,	fHueStep            (0)
+	,	fValStep	        (0)
+	,	fRuntimeFingerprint ()
+	,	fDeltas             ()
 
 	{
 	
@@ -63,11 +62,11 @@ dng_hue_sat_map &dng_hue_sat_map::operator= (const dng_hue_sat_map &rhs)
 
 		if (!rhs.IsValid ())
 			{
-			
+
 			SetInvalid ();
-			
+
 			}
-			
+
 		else
 			{
 
@@ -78,8 +77,10 @@ dng_hue_sat_map &dng_hue_sat_map::operator= (const dng_hue_sat_map &rhs)
 			fHueStep = rhs.fHueStep;
 			fValStep = rhs.fValStep;
 
+			fRuntimeFingerprint = rhs.fRuntimeFingerprint;
+
 			fDeltas = rhs.fDeltas;
-				
+
 			}
 
 		}
@@ -122,11 +123,15 @@ void dng_hue_sat_map::SetDivisions (uint32 hueDivisions,
 	fHueStep = satDivisions;
 	fValStep = hueDivisions * fHueStep;
 
-	uint32 size = DeltasCount () * (uint32) sizeof (HSBModify);
+	dng_safe_uint32 size (DeltasCount ());
+
+	size *= (uint32) sizeof (HSBModify);
 	
-	fDeltas.Allocate (size);
+	fDeltas.Allocate (size.Get ());
 	
-	DoZeroBytes (fDeltas.Buffer (), size);
+	DoZeroBytes (fDeltas.Buffer (), size.Get ());
+
+	fRuntimeFingerprint.Clear ();
 
 	}
 
@@ -234,6 +239,19 @@ void dng_hue_sat_map::SetDeltaKnownWriteable (uint32 hueDiv,
 			}
 		
 		}
+
+	}
+
+/*****************************************************************************/
+
+void dng_hue_sat_map::AssignNewUniqueRuntimeFingerprint ()
+	{
+
+	const uint64 uid = ++sRuntimeFingerprintCounter;
+
+	dng_md5_printer printer;
+	printer.Process (&uid, sizeof (uid));
+	fRuntimeFingerprint = printer.Result ();
 
 	}
 
@@ -355,7 +373,29 @@ dng_hue_sat_map * dng_hue_sat_map::Interpolate (const dng_hue_sat_map &map1,
 		data3++;
 		
 		}
-		
+
+	// Compute a fingerprint based on the inputs for the new dng_hue_sat_map
+	// so that repeated interpolations of the same objects with the same
+	// parameters produce the same fingerprint each time.
+
+		{
+
+		dng_md5_printer printer;
+
+		printer.Process ("Interpolate", 11);
+
+		printer.Process (&weight1, sizeof(weight1));
+
+		printer.Process (map1.RuntimeFingerprint ().data,
+						 dng_fingerprint::kDNGFingerprintSize);
+
+		printer.Process (map2.RuntimeFingerprint ().data,
+						 dng_fingerprint::kDNGFingerprintSize);
+
+		result->SetRuntimeFingerprint (printer.Result ());
+
+		}
+
 	// Return interpolated tables.
 	
 	return result.Release ();
